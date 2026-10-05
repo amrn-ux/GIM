@@ -1,4 +1,5 @@
 import * as D from './data.js';
+import { trackViewport } from './viewport.js';
 import { ICON } from './icons.js';
 import { backupDue, nextBackupDeadline } from './drive-schedule.js';
 import { FOCUS_MUSCLES, muscleCounts } from './muscle-focus.js';
@@ -945,6 +946,7 @@ document.addEventListener('touchend', () => {
 document.addEventListener('focusout', () => setTimeout(() => window.scrollTo(0, 0), 60)); // keyboard closing must not leave the page shifted
 
 // ---------- boot ----------
+trackViewport(window, document.documentElement);
 applyTheme();
 D.init(localStorage);
 if (D.loadNotice) { alert(D.loadNotice); D.clearNotice(); }

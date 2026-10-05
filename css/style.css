@@ -176,8 +176,8 @@ input[type=date] { padding: 8px 10px; border-radius: 10px; font-size: 16px; min-
 .sheet input.text, .sheet select.text { background: var(--field); }
 
 /* fixed layout: header/tab bar can no longer jump when scrolling or when the keyboard opens */
-html, body { position: fixed; inset: 0; width: 100%; height: 100%; overflow: hidden; }
-#app { position: fixed; top: 0; bottom: 0; left: 0; right: 0; width: 100%; max-width: 640px; margin: 0 auto; height: 100%; height: 100dvh; padding-bottom: calc(var(--tab-h) + var(--safe-b)); }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+#app { position: fixed; top: var(--viewport-top, 0px); bottom: auto; left: 0; right: 0; width: 100%; max-width: 640px; margin: 0 auto; height: 100vh; height: var(--viewport-height, 100dvh); padding-bottom: calc(var(--tab-h) + var(--safe-b)); }
 button { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 input, textarea { -webkit-user-select: text; user-select: text; }
 .hero { height: min(40vh, 360px); }
@@ -267,7 +267,7 @@ html, body { background: radial-gradient(130% 42% at 50% -4%, var(--glow) 0%, tr
 
 /* Settings */
 main { min-height: 0; }
-.tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 640px; z-index: 20; height: calc(var(--tab-h) + var(--safe-b)); padding-bottom: var(--safe-b); }
+.tabbar { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 20; height: calc(var(--tab-h) + var(--safe-b)); padding-bottom: var(--safe-b); }
 .tabbar::after { content: ''; position: absolute; top: 100%; left: 0; right: 0; height: var(--safe-b); background: var(--card); pointer-events: none; }
 .bottombar { flex-shrink: 0; padding-bottom: 8px; }
 .cats .cat { position: relative; isolation: isolate; min-height: 128px; padding: 16px; display: flex; align-items: flex-end; justify-content: flex-start; overflow: hidden; border-radius: var(--radius); text-align: left; color: #fff; background: #19191c; border: 1px solid #ffffff12; }

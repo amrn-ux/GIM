@@ -1,7 +1,7 @@
 // Offline support. Network-first: when online you always get the newest files; when offline the cached copy is used.
-const CACHE = 'gim-v1.4.10'; // = 'gim-v' + VERSION in js/version.js
+const CACHE = 'gim-v1.4.11'; // = 'gim-v' + VERSION in js/version.js
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css', 'js/ui.js', 'js/data.js', 'js/analytics.js', 'js/charts.js', 'js/version.js', 'js/config.js',
-  'js/gym-library.js', 'js/muscle-focus.js', 'js/drive-schedule.js', 'js/icons.js', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
+  'js/gym-library.js', 'js/muscle-focus.js', 'js/drive-schedule.js', 'js/icons.js', 'js/viewport.js', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
   'images/home-hero.jpg', 'images/chest.jpg', 'images/back.jpg', 'images/shoulder.jpg', 'images/arms.jpg', 'images/legs.jpg', 'images/core.jpg', 'images/cardio.jpg', 'images/mix.jpg'];
 
 self.addEventListener('install', (e) => {
