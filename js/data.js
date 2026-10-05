@@ -1,8 +1,9 @@
 // Data model, local storage persistence, workout logic and the built-in exercise library.
+import { GYM_LIBRARY } from './gym-library.js';
 export const CATS = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core', 'cardio'];
 export const EQUIP = ['machine', 'cable', 'barbell', 'dumbbell', 'bodyweight', 'cardio', 'other'];
 export const SCHEMA = 1;
-export const SEED_VERSION = 3;
+export const SEED_VERSION = 4;
 const KEY = 'gim-data';
 
 let S = null;
@@ -91,7 +92,10 @@ const LIB = [
 // Exercises where TWO dumbbells are used at once: weight = per dumbbell, volume counts both (x2).
 export const TWO = new Set(['dumbbell-bench-press', 'incline-dumbbell-press', 'dumbbell-fly', 'dumbbell-shoulder-press', 'lateral-raise', 'front-raise',
   'dumbbell-curl', 'hammer-curl', 'dumbbell-shrug', 'walking-lunges', 'bulgarian-split-squat', 'wrist-curl']);
-export const builtIn = () => LIB.map(([n, c, e, mi, ma, o]) => { const x = make(n, c, e, mi, ma, o); x.mult = TWO.has(x.id) ? 2 : 1; return x; });
+export const builtIn = () => GYM_LIBRARY.map((g) => {
+  const previous = LIB.find(([name]) => slug(name) === g.id);
+  return { ...make(g.name, [...g.cats], g.equip, previous?.[3], previous?.[4]), ...g, cats: [...g.cats] };
+});
 
 const DEFAULT_FIELDS = ['Neck', 'Shoulders', 'Chest', 'Waist', 'Hips', 'Left arm', 'Right arm', 'Left thigh', 'Right thigh', 'Left calf', 'Right calf']
   .map((name, i) => ({ id: name.toLowerCase().replace(/ /g, '-'), name, custom: false, order: i }));
@@ -115,8 +119,15 @@ function normalize(d) {
   }
   d.exercises.forEach((e) => { if (!e.mult) e.mult = 1; });
   if (d.seedVersion < SEED_VERSION) {
-    const have = new Set(d.exercises.map((x) => x.id));
-    for (const x of builtIn()) if (!have.has(x.id)) d.exercises.push(x);
+    const gym = builtIn();
+    const allowed = new Set(gym.map((x) => x.id));
+    // Keep old entries for recorded workouts, but remove them from exercise pickers.
+    d.exercises.forEach((x) => { if (!x.custom && !allowed.has(x.id)) x.archived = true; });
+    for (const x of gym) {
+      const existing = d.exercises.find((e) => e.id === x.id);
+      if (!existing) d.exercises.push(x);
+      else if (!existing.custom) Object.assign(existing, { name: x.name, gymImage: x.gymImage, focus: x.focus, cats: x.cats });
+    }
     d.seedVersion = SEED_VERSION;
   }
   return d;

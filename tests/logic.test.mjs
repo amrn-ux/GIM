@@ -1,13 +1,13 @@
-﻿// Run with: node --test tests/
+// Run with: node --test tests/
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as D from '../js/data.js';
-import { makeAnalytics, setsCSV, PERIODS, buckets } from '../js/analytics.js';
+import { makeAnalytics, PERIODS, buckets } from '../js/analytics.js';
 
 const mem = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v), m }; };
 let st;
 const fresh = () => { st = mem(); D.init(st); };
-const rowing = () => D.exercise('rowing-machine');
+const rowing = () => D.exercise('seated-cable-row');
 const add = (w, ex, o) => D.addSet(w.id, ex, ex.cats[0], o);
 const A = () => makeAnalytics(D.db());
 
@@ -49,28 +49,28 @@ test('edit / delete recalculates bests, volume, numbering', () => {
   fresh(); const w = D.startWorkout();
   const a = add(w, rowing(), { machineSetting: 2, weight: 20, reps: 12 });
   const b = add(w, rowing(), { machineSetting: 3, weight: 30, reps: 8 });
-  assert.equal(A().bests('rowing-machine').bestWeight.value, 30);
+  assert.equal(A().bests('seated-cable-row').bestWeight.value, 30);
   D.updateSet(b.id, { machineSetting: 3, weight: 25, reps: 8, durationSeconds: null });
-  assert.equal(A().bests('rowing-machine').bestWeight.value, 25);
+  assert.equal(A().bests('seated-cable-row').bestWeight.value, 25);
   assert.equal(A().workoutVolume(w.id), 240 + 200);
   const c = add(w, rowing(), { weight: 20, reps: 5 });
   D.deleteSet(a.id);
   assert.deepEqual(D.setsFor(w.id).map((x) => x.setOrder), [1, 2]);
   D.deleteSet(b.id); D.deleteSet(c.id);
-  assert.equal(A().bests('rowing-machine').bestWeight, null);
+  assert.equal(A().bests('seated-cable-row').bestWeight, null);
 });
 
 test('machine setting breaks weight ties for PBs', () => {
   fresh(); const w = D.startWorkout();
   add(w, rowing(), { machineSetting: 2, weight: 20, reps: 10 });
   add(w, rowing(), { machineSetting: 3, weight: 20, reps: 10 });
-  assert.equal(A().bests('rowing-machine').bestWeight.detail, '3 / 20 kg');
+  assert.equal(A().bests('seated-cable-row').bestWeight.detail, '3 / 20 kg');
 });
 
 test('multi-muscle exercise appears in both muscles', () => {
-  fresh(); const w = D.startWorkout(); add(w, D.exercise('deadlift'), { weight: 100, reps: 5 });
+  fresh(); const w = D.startWorkout(); add(w, D.exercise('face-pull'), { weight: 100, reps: 5 });
   const a = A();
-  assert.ok(a.muscleExercises('back', 'week').length); assert.ok(a.muscleExercises('legs', 'week').length);
+  assert.ok(a.muscleExercises('back', 'week').length); assert.ok(a.muscleExercises('shoulders', 'week').length);
   assert.equal(a.muscleExercises('chest', 'week').length, 0);
 });
 
@@ -96,10 +96,10 @@ test('plateau flagged for unchanged performance, not for progress', () => {
   fresh(); const d = D.db(); const day = 86400000;
   const mk = (daysAgo, weight) => {
     const t = Date.now() - daysAgo * day; const w = { id: D.uid(), startedAt: t, finishedAt: t, planId: null }; d.workouts.push(w);
-    d.sets.push({ id: D.uid(), workoutId: w.id, exerciseId: 'rowing-machine', exerciseName: 'Rowing Machine', muscleCategory: 'back', muscleCategories: ['back'], equipment: 'machine', machineSetting: 2, weight, reps: 10, durationSeconds: null, timestamp: t, setOrder: 1, workoutOrder: 1 });
+    d.sets.push({ id: D.uid(), workoutId: w.id, exerciseId: 'seated-cable-row', exerciseName: 'Seated Cable Row', muscleCategory: 'back', muscleCategories: ['back'], equipment: 'machine', machineSetting: 2, weight, reps: 10, durationSeconds: null, timestamp: t, setOrder: 1, workoutOrder: 1 });
   };
   [22, 15, 8, 1].forEach((x) => mk(x, 20));
-  assert.equal(A().plateaus(4)[0].exerciseId, 'rowing-machine');
+  assert.equal(A().plateaus(4)[0].exerciseId, 'seated-cable-row');
   mk(0.5, 30);
   assert.equal(A().plateaus(4).length, 0);
 });
@@ -131,13 +131,6 @@ test('backup round trip, validation, merge never overwrites', () => {
   assert.throws(() => D.validateBackup(bad));
   assert.throws(() => D.validateBackup({ format: 'x' }));
   fresh(); assert.equal(D.merge(file.data).sets, 2);
-});
-
-test('CSV has one row per set', () => {
-  fresh(); const w = D.startWorkout();
-  add(w, rowing(), { machineSetting: 2, weight: 20, reps: 12 }); add(w, rowing(), { machineSetting: 2, weight: 20, reps: 10 });
-  const lines = setsCSV(D.db()).trim().split('\n');
-  assert.equal(lines.length, 3); assert.ok(lines[1].includes('Rowing Machine')); assert.ok(lines[1].endsWith(',240'));
 });
 
 test('corrupt storage is kept aside, not overwritten', () => {

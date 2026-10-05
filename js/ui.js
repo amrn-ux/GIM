@@ -1,18 +1,21 @@
 import * as D from './data.js';
+import { ICON } from './icons.js';
+import { backupDue, nextBackupDeadline } from './drive-schedule.js';
+import { FOCUS_MUSCLES, muscleCounts } from './muscle-focus.js';
 import { VERSION, BUILD_DATE } from './version.js';
 import { GOOGLE_CLIENT_ID } from './config.js';
 import {
-  makeAnalytics, PERIODS, PERIOD_INFO, loadText, effortText, num, sod, setVolume, setsCSV, bodyWeightCSV, measurementsCSV, stepsCSV,
+  makeAnalytics, PERIODS, PERIOD_INFO, loadText, effortText, num, sod, setVolume,
 } from './analytics.js';
-import { lineChart, barChart, ring, sparkline, miniBars } from './charts.js';
+import { lineChart, barChart } from './charts.js';
 
 // ---------- helpers ----------
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-const CAT_COLOR = { chest: '#e6524d', back: '#3a80e6', shoulders: '#9a66d9', arms: '#f2991a', legs: '#26a672', core: '#d9bf1a', cardio: '#e64d8c', mix: '#5b6cf0' };
-const CAT_ICON = { chest: '🏋️', back: '🚣', shoulders: '🤸', arms: '💪', legs: '🦵', core: '🧘', cardio: '🏃', mix: '🔀' };
-const EQ_ICON = { machine: '⚙️', cable: '🔗', barbell: '🏋️', dumbbell: '💪', bodyweight: '🤸', cardio: '❤️', other: '▫️' };
+const CAT_COLOR = { chest: '#F26A21', back: '#3B82F6', shoulders: '#2FBF71', arms: '#8B5CF6', legs: '#EF5B5B', core: '#F2B705', cardio: '#EC4899', mix: '#5B6CF0' };
+const CAT_ICON = { chest: ICON.dumbbell, back: ICON.activity, shoulders: ICON.body, arms: ICON.dumbbell, legs: ICON.body, core: ICON.body, cardio: ICON.activity, mix: ICON.shuffle };
+const EQ_ICON = { machine: ICON.settings, cable: ICON.link, barbell: ICON.dumbbell, dumbbell: ICON.dumbbell, bodyweight: ICON.body, cardio: ICON.activity, other: ICON.square };
 const big = (v) => Math.round(v).toLocaleString();
 const kg = (v) => num(v) + ' kg';
 const vol = (v) => big(v) + ' kg';
@@ -25,16 +28,42 @@ const longDay = (ms) => new Date(ms).toLocaleDateString(undefined, { weekday: 'l
 const monthName = (ms) => new Date(ms).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 const dstr = (s) => fmtDay(D.dayMs(s));
 const badge = (c) => `<span class="badge" style="background:${CAT_COLOR[c]}2e;color:${CAT_COLOR[c]}">${cap(c)}</span>`;
+const focusBadge = (ex) => ex.focus ? `<span class="badge" style="background:${CAT_COLOR[ex.cats[0]]}2e;color:${CAT_COLOR[ex.cats[0]]}">${esc(ex.focus)}</span>` : ex.cats.map(badge).join(' ');
 
 function thumb(ex, cls = '') {
   const c = CAT_COLOR[ex.cats[0]] || '#888';
-  if (ex.image) return `<div class="thumb ${cls}" style="background-image:url('${esc(ex.image)}')"></div>`;
+  const src = ex.image || ex.gymImage;
+  if (src) return `<div class="thumb ${cls} exercise-picture"><img src="${esc(src)}" alt="${esc(ex.name)} — ${esc(ex.focus || ex.cats.map(cap).join(', '))}" loading="lazy" decoding="async"></div>`;
   return `<div class="thumb ${cls}" style="background:linear-gradient(135deg,${c},${c}99)">${EQ_ICON[ex.equip] || ''}<div class="img-over" style="background-image:url('images/${esc(ex.id)}.jpg')"></div></div>`;
 }
 
 // ---------- state ----------
 const ROOTS = ['home', 'workout', 'plans', 'progress', 'profile'];
-const TAB_META = { home: ['🏠', 'Home'], workout: ['🏋️', 'Workout'], plans: ['📋', 'Plans'], progress: ['📈', 'Progress'], profile: ['👤', 'Profile'] };
+const SVG = (d, w = 24, extra = '') => `<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${d}</svg>`;
+const IC = {
+  home: SVG('<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h4.5v-6h4v6h4.5V10"/>'),
+  workout: SVG('<path d="M6 6.5v11M18 6.5v11M3 9.5v5M21 9.5v5M6 12h12"/>'),
+  progress: SVG('<path d="M5 20v-8M12 20V4M19 20v-5"/>'),
+  profile: SVG('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.2 3.6-6.5 8-6.5s8 2.300 8 6.500"/>'),
+  plans: SVG('<rect x="5" y="4" width="14" height="17" rx="2.500"/><path d="M9 4v2.500h6V4M9 11h6M9 15h6"/>'),
+  gear: SVG('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
+  shoe: SVG('<path d="M3 16.500c0-3 1.800-4.200 3.800-5l2.700-3 3 2c1.200.9 3.200.9 5 1.800S20.500 14 20.500 16.500V18H3z"/>', 22),
+  scale: SVG('<rect x="4" y="4" width="16" height="16" rx="4.500"/><path d="M8 9.500a4 4 0 0 1 8 0"/><path d="M12 9.500l1.600-1.800"/>', 22),
+  dumbbell: SVG('<path d="M6 6.500v11M18 6.500v11M3 9.500v5M21 9.500v5M6 12h12"/>', 22),
+  chev: SVG('<path d="M9.500 6l6 6-6 6"/>', 18),
+  check: SVG('<path d="M5.500 12.500l4.500 4.500 8.500-9.500" stroke-width="3"/>', 20),
+  library: SVG('<path d="M4 5.500A1.500 1.500 0 0 1 5.500 4H11v16H5.500A1.500 1.500 0 0 1 4 18.500z"/><path d="M20 5.500A1.500 1.500 0 0 0 18.500 4H13v16h5.500a1.500 1.500 0 0 0 1.500-1.500z"/>', 20),
+  target: SVG('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', 20),
+  ruler: SVG('<rect x="3" y="8" width="18" height="8" rx="2"/><path d="M7 8v3M11 8v4M15 8v3M19 8v2"/>', 20),
+  clock: SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', 20),
+  cloud: SVG('<path d="M7 18a4 4 0 0 1-.5-8 5.500 5.500 0 0 1 10.600 1.500A3.500 3.500 0 0 1 17 18z"/>', 20),
+  moon: SVG('<path d="M20 14.500A8 8 0 0 1 9.500 4 8 8 0 1 0 20 14.500z"/>', 20),
+  info: SVG('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>', 20),
+  user: SVG('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.200 3.600-6.500 8-6.500s8 2.300 8 6.500"/>', 20),
+  play: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5.500v13l11-6.500z"/></svg>',
+};
+const TAB_META = { home: [IC.home, 'Home'], workout: [IC.workout, 'Workout'], plans: [IC.plans, 'Plans'], progress: [IC.progress, 'Progress'], profile: [IC.gear, 'Settings'] };
+const TABS = ['home', 'workout', 'plans', 'progress'];
 const U = {
   tab: 'home', stacks: { home: [], workout: [], plans: [], progress: [], profile: [] },
   period: localStorage.getItem('gim-period') || 'month', form: null, sheet: null, q: '', filter: null,
@@ -95,64 +124,78 @@ function groupSets(sets) {
 function setLine(s) {
   return `<div class="set-line"><button class="row grow" data-a="editSet" data-id="${s.id}" style="text-align:left">
     <span class="n">Set ${s.setOrder}</span><span class="l">${esc(loadText(s) || '—')}</span><span>${esc(effortText(s))}</span></button>
-    <button class="x" data-a="delSet" data-id="${s.id}" aria-label="Delete set">✕</button></div>`;
+    <button class="x" data-a="delSet" data-id="${s.id}" aria-label="Delete set">${ICON.close}</button></div>`;
 }
 function setsHtml(wid, addButtons = true) {
   const sets = D.setsFor(wid);
-  if (!sets.length) return empty('📝', 'No sets yet', 'Pick a muscle above, choose an exercise and record your first set.');
+  if (!sets.length) return empty(ICON.note, 'No sets yet', 'Pick a muscle above, choose an exercise and record your first set.');
   return groupSets(sets).map((g) => `<div class="card"><h2 style="color:${CAT_COLOR[g.cat]}">${CAT_ICON[g.cat]} ${g.cat.toUpperCase()}</h2>
     ${g.ex.map((e) => `<div class="exhead"><span>${esc(e.name)}</span>${addButtons ? `<button class="plus" data-a="openEx" data-ex="${e.id}" data-cat="${g.cat}" data-wid="${wid}" aria-label="Add set">＋</button>` : ''}</div>${e.sets.map(setLine).join('')}`).join('')}</div>`).join('');
 }
-const catGrid = (wid) => `<div class="cats">${[...D.CATS, 'mix'].map((c) => `<button class="cat" style="background:linear-gradient(135deg,${CAT_COLOR[c]},${CAT_COLOR[c]}aa)" data-a="openCat" data-cat="${c}" data-wid="${wid}"><span class="ic">${CAT_ICON[c]}</span>${cap(c)}</button>`).join('')}</div>`;
+const CAT_IMAGE = { chest: 'chest.jpg', back: 'back.jpg', shoulders: 'shoulder.jpg', arms: 'arms.jpg', legs: 'legs.jpg', core: 'core.jpg', cardio: 'cardio.jpg', mix: 'mix.jpg' };
+const catGrid = (wid) => `<div class="cats">${[...D.CATS, 'mix'].map((c) => `<button class="cat ${CAT_IMAGE[c] ? 'cat-photo' : 'cat-mix'}" data-a="openCat" data-cat="${c}" data-wid="${wid}">${CAT_IMAGE[c] ? `<img src="images/${CAT_IMAGE[c]}" alt="" loading="lazy" decoding="async">` : `<span class="ic">${IC.dumbbell}</span>`}<span class="cat-label">${c === 'mix' ? 'Mix' : cap(c)}</span></button>`).join('')}</div>`;
 
 // ---------- views ----------
 const V = {};
 
 V.home = () => {
   const act = D.activeWorkout(); const now = Date.now(); const DAY = 86400000;
-  const todayW = D.workoutsNewestFirst().filter((w) => sod(w.startedAt) === sod(now));
   const g = D.db().goals; const wGoal = (g.find((x) => x.kind === 'workoutsPerWeek') || {}).target || 4; const sGoal = (g.find((x) => x.kind === 'steps') || {}).target || 10000;
   const d0 = new Date(sod(now)); const wkStart = sod(now) - ((d0.getDay() + 6) % 7) * DAY;
-  const weekIv = { start: wkStart, end: wkStart + 7 * DAY };
-  const wkCount = A.workoutCountIn(weekIv); const st = D.stepsToday();
+  const wkCount = A.workoutCountIn({ start: wkStart, end: wkStart + 7 * DAY });
   const trained = new Set(D.workoutsNewestFirst().map((w) => D.ymd(w.startedAt)));
-  const week = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => { const t = wkStart + i * DAY; const k = D.ymd(t); return `<div class="d ${trained.has(k) ? 'on' : ''} ${k === D.ymd(now) ? 'today' : ''}">${l}<i></i></div>`; }).join('');
-  const bw = A.pointsIn(A.bodyWeightPoints(), 'month'); const bwAll = A.bodyWeightPoints(); const lastBw = bwAll[bwAll.length - 1];
+  const short = (ms) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((l, i) => { const k = D.ymd(wkStart + i * DAY); const on = trained.has(k); const today = k === D.ymd(now); return `<div class="d ${on ? 'on' : ''} ${today ? 'today' : ''}"><div class="c">${on ? IC.check : ''}</div>${l}${today ? '<div class="dot"></div>' : ''}</div>`; }).join('');
+  const bwAll = A.bodyWeightPoints();
   const wAvg = (a, b) => { const p = bwAll.filter((x) => x.t >= a && x.t < b); return p.length ? p.reduce((s, x) => s + x.v, 0) / p.length : null; };
   const avgNow = wAvg(sod(now) - 6 * DAY, sod(now) + DAY); const avgPrev = wAvg(sod(now) - 13 * DAY, sod(now) - 6 * DAY);
-  const bwDiff = avgNow != null && avgPrev != null ? avgNow - avgPrev : null; const stAvg = A.avgSteps('week'); const wkVol = A.totalVolume('week');
-  const wks = A.buckets('quarter').slice(-8).map((b) => ({ t: b.start, v: A.volumeIn(b) }));
-  const thisV = wks[wks.length - 1].v; const prevV = wks[wks.length - 2].v; const pct = prevV > 0 ? Math.round((thisV - prevV) / prevV * 100) : null;
-  const counts = {}; A.setsIn(A.interval('week')).forEach((s) => { const c = s.muscleCategory === 'mix' ? (s.muscleCategories[0] || 'mix') : s.muscleCategory; counts[c] = (counts[c] || 0) + 1; });
+  const bwShow = avgNow != null ? avgNow : bwAll.length ? bwAll[bwAll.length - 1].v : null; const bwDiff = avgNow != null && avgPrev != null ? avgNow - avgPrev : null;
+  const stAvg = A.avgSteps('week');
+  const counts = muscleCounts(A.setsIn(A.interval('week')));
   const maxC = Math.max(1, ...Object.values(counts));
-  const pbs = A.pbCountIn(A.interval('month')); const flags = A.plateaus(D.db().profile.plateauWeeks).length;
+  const focus = FOCUS_MUSCLES;
   const last = D.workoutsNewestFirst().filter((w) => w.finishedAt)[0];
+  let recent = '<div class="muted small" style="margin-top:10px">Finished workouts appear here.</div>';
+  if (last) {
+    const sets = D.setsFor(last.id); const tally = {}; sets.forEach((s) => { const c = s.muscleCategory === 'mix' ? (s.muscleCategories[0] || 'mix') : s.muscleCategory; tally[c] = (tally[c] || 0) + 1; });
+    const main = Object.keys(tally).sort((a, b) => tally[b] - tally[a])[0] || 'mix'; const col = CAT_COLOR[main];
+    recent = `<button class="recent" data-a="openWorkout" data-id="${last.id}"><div class="rthumb" style="background:linear-gradient(135deg,${col},${col}88)">${CAT_ICON[main]}<div class="img-over" style="background-image:url('images/cat-${main}.jpg')"></div></div>
+      <div class="rtxt"><b style="font-size:17px">${cap(main)}</b><div class="small muted">${fmtDay(last.startedAt)}</div></div></button>
+      <div class="small muted" style="margin-top:8px">${sets.length} sets • ${new Set(sets.map((s) => s.exerciseId)).size} exercises<br>${vol(A.workoutVolume(last.id))}</div>`;
+  }
+  const hr = new Date(now).getHours(); const greet = hr < 12 ? 'Good Morning!' : hr < 17 ? 'Good Afternoon!' : 'Good Evening!';
   return {
-    title: longDay(now), html: `
-    <button class="btn" data-a="startWorkout" style="font-size:22px;padding:20px">▶ ${act ? 'Resume Workout' : 'Start Workout'}</button>
-    <div class="small muted center" style="margin:6px 0 12px">${act ? `In progress · ${D.setsFor(act.id).length} sets` : `${wkCount} workout${wkCount === 1 ? '' : 's'} this week · ${vol(wkVol)}`}</div>
-    <div class="card"><div class="week">${week}</div></div>
-    <div class="glance">
-      <button data-a="tab" data-v="progress">${ring(wkCount / wGoal, { text: wkCount })}<div class="cap">Workouts / ${wGoal}</div></button>
-      <button data-a="stepsEntry">${ring((stAvg || 0) / sGoal, { color: 'var(--green)', text: stAvg != null ? (stAvg >= 1000 ? Math.round(stAvg / 100) / 10 + 'k' : Math.round(stAvg)) : '+' })}<div class="cap">Steps · 7-day avg</div></button>
-      <button data-a="weightEntry">${sparkline(bw, { color: 'var(--blue)', height: 46 })}<div class="big">${avgNow != null ? num(Math.round(avgNow * 10) / 10) : lastBw ? num(lastBw.v) : '+'}</div><div class="cap">kg · 7-day avg ${bwDiff != null ? (bwDiff > 0 ? '↑' : bwDiff < 0 ? '↓' : '=') + ' ' + num(Math.round(Math.abs(bwDiff) * 10) / 10) : ''}</div></button>
+    bare: true, html: `
+    <div class="homehead"><div class="date">${longDay(now)}</div><button class="gear" data-a="menuGo" data-v="profile" aria-label="Profile">${IC.gear}</button></div>
+    <div class="greet">${greet}</div><div class="subtitle">Stronger habits. A healthier you.</div>
+    <button class="hero-card" data-a="startWorkout" aria-label="${act ? 'Resume Workout' : 'Start Workout'}"><img src="images/home-hero.jpg" alt="" width="736" height="414" fetchpriority="high" decoding="async"></button>
+    <button class="card weekcard" data-a="go" data-v="history"><div class="row between"><b style="font-size:20px">This Week</b><span class="muted small">${short(wkStart)} – ${short(wkStart + 6 * DAY)} ${IC.chev}</span></div><div class="wk">${days}</div></button>
+    <div class="duo">
+      <section class="card muscle-focus" aria-label="Muscle focus">
+        <div class="row between"><b style="font-size:18px">Muscle Focus</b><button class="focus-details" data-a="go" data-v="muscles" aria-label="View muscle progress">${IC.chev}</button></div>
+        <div class="small muted focus-period">Last 7 days &middot; recorded sets</div>
+        <div class="focus-groups">${focus.map(c => `<div class="focus-group"><div class="focus-group-top"><span>${cap(c)}</span><span class="focus-count">${counts[c]}<span class="sr-only"> recorded sets</span></span></div><div class="focus-meter" aria-hidden="true"><i style="width:${counts[c] / maxC * 100}%"></i></div></div>`).join('')}</div>
+      </section>
+      <div class="card"><button class="row between" style="width:100%;text-align:left" data-a="go" data-v="history"><b style="font-size:18px">Recent Workout</b><span class="muted">${IC.chev}</span></button>${recent}</div>
     </div>
-    <button class="card" style="width:100%;text-align:left" data-a="tab" data-v="progress"><div class="row between"><b>Volume · 8 weeks</b><b class="${pct == null ? 'muted' : pct >= 0 ? 'up' : 'down'}">${pct == null ? '' : (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct) + '%'}</b></div>${miniBars(wks, { height: 64 })}</button>
-    <div class="card"><div class="row between" style="margin-bottom:4px"><b>Muscles · 7 days</b><span class="small muted">sets</span></div>
-      ${D.CATS.map((c) => `<div class="mrow"><span class="nm">${cap(c)}</span><span class="trk"><i style="width:${(counts[c] || 0) / maxC * 100}%;background:${CAT_COLOR[c]}"></i></span><span class="ct">${counts[c] || 0}</span></div>`).join('')}</div>
-    <div class="pills"><button data-a="go" data-v="bests" style="text-align:center">🏆 ${pbs}<div class="small muted" style="font-weight:400">records · 30d</div></button>
-      <button data-a="go" data-v="plateau" style="text-align:center">⚠️ ${flags}<div class="small muted" style="font-weight:400">plateaus</div></button></div>
-    <div class="card">${last ? `<div class="list">${workoutRow(last)}</div>` : '<div class="muted">Finished workouts appear here.</div>'}<button class="link" style="margin-top:6px" data-a="go" data-v="history">All history ›</button></div>`,
+    <div class="ptiles">
+      <button class="ptile peach" data-a="go" data-v="consistency"><div class="top"><span class="ico" style="background:rgba(249,106,34,.16);color:#F26A21">${IC.dumbbell}</span><span class="muted">${IC.chev}</span></div><div class="lab">Workouts</div><div class="val">${wkCount}</div><div class="lab">/ ${wGoal} this week</div></button>
+      <button class="ptile sky" data-a="go" data-v="steps"><div class="top"><span class="ico" style="background:rgba(249,106,34,.16);color:#F26A21">${IC.shoe}</span><span class="muted">${IC.chev}</span></div><div class="lab">Steps · 7d avg</div><div class="val">${stAvg != null ? big(stAvg) : '—'}</div><div class="meter"><i style="width:${Math.min(100, (stAvg || 0) / sGoal * 100)}%"></i></div></button>
+      <button class="ptile mint" data-a="go" data-v="weight"><div class="top"><span class="ico" style="background:rgba(249,106,34,.16);color:#F26A21">${IC.scale}</span><span class="muted">${IC.chev}</span></div><div class="lab">Weight · 7d avg</div><div class="val">${bwShow != null ? num(Math.round(bwShow * 10) / 10) : '—'} <small>kg</small></div>${bwDiff != null ? `<div class="lab">${bwDiff > 0 ? '↑' : bwDiff < 0 ? '↓' : '='} ${num(Math.round(Math.abs(bwDiff) * 10) / 10)} kg</div>` : ''}</button>
+    </div>
+    `,
   };
 };
+
 V.workout = () => {
   const act = D.activeWorkout();
   if (!act) {
     const plans = D.db().plans;
     return {
-      title: 'Workout', html: `<button class="btn" data-a="startWorkout">▶ Start Workout</button>
-      ${U.lastFinished && D.workout(U.lastFinished) ? `<div class="card" style="margin-top:12px"><button class="link" data-a="openWorkout" data-id="${U.lastFinished}">✅ Workout saved — view details</button></div>` : ''}
-      ${plans.length ? `<h2 class="sec">Start from a plan</h2><div class="card list">${plans.map((p) => `<button class="item" data-a="startPlan" data-id="${p.id}"><div class="grow"><b>${esc(p.name)}</b><div class="small muted">${p.exerciseIds.length} exercises</div></div><span class="link">▶</span></button>`).join('')}</div>` : ''}`,
+      title: 'Workout', html: `<button class="btn" data-a="startWorkout">${ICON.play} Start Workout</button>
+      <button class="card row between" style="width:100%;margin-top:12px" data-a="go" data-v="plans"><span class="row">${IC.plans} Plans</span>${chev}</button>
+      ${U.lastFinished && D.workout(U.lastFinished) ? `<div class="card" style="margin-top:12px"><button class="link" data-a="openWorkout" data-id="${U.lastFinished}">${ICON.checkCircle} Workout saved — view details</button></div>` : ''}
+      ${plans.length ? `<h2 class="sec">Start from a plan</h2><div class="card list">${plans.map((p) => `<button class="item" data-a="startPlan" data-id="${p.id}"><div class="grow"><b>${esc(p.name)}</b><div class="small muted">${p.exerciseIds.length} exercises</div></div><span class="link">${ICON.play}</span></button>`).join('')}</div>` : ''}`,
     };
   }
   const sets = D.setsFor(act.id); const plan = act.planId ? D.plan(act.planId) : null;
@@ -160,26 +203,27 @@ V.workout = () => {
   const recents = D.recentExerciseIds(6);
   return {
     title: 'Workout', right: '<button class="hbtn" data-a="discard">Discard</button>',
-    bottom: `<button class="btn ${sets.length ? 'green' : 'gray'}" data-a="finish">🏁 ${sets.length ? 'Finish Workout' : 'Cancel Workout'}</button>`,
+    bottom: `<button class="btn ${sets.length ? 'green' : 'gray'}" data-a="finish">${ICON.flag} ${sets.length ? 'Finish Workout' : 'Cancel Workout'}</button>`,
     html: `<div class="card"><h2>Today's workout</h2><div class="grid3 center">
       <div><div style="font-size:20px;font-weight:700">${sets.length}</div><div class="small muted">Sets</div></div>
       <div><div style="font-size:20px;font-weight:700">${new Set(sets.map((s) => s.exerciseId)).size}</div><div class="small muted">Exercises</div></div>
       <div><div style="font-size:20px;font-weight:700">${vol(A.workoutVolume(act.id))}</div><div class="small muted">Volume</div></div></div></div>
       <h2 class="sec">Choose muscle</h2>${catGrid(act.id)}
-      <button class="card row between" style="width:100%" data-a="openCat" data-cat="" data-wid="${act.id}"><span>🔍 Search all exercises</span>${chev}</button>
-      ${plan ? `<div class="card"><h2>Plan: ${esc(plan.name)}</h2><div class="list">${plan.exerciseIds.map((id) => { const e = D.exercise(id); return e ? `<button class="item" data-a="openEx" data-ex="${id}" data-cat="${e.cats[0]}" data-wid="${act.id}"><span>${done.has(id) ? '✅' : '⚪️'}</span><span class="grow">${esc(e.name)}</span>${chev}</button>` : ''; }).join('')}</div></div>` : ''}
+      <button class="card row between" style="width:100%" data-a="openCat" data-cat="" data-wid="${act.id}"><span>${ICON.search} Search all exercises</span>${chev}</button>
+      <button class="card row between" style="width:100%" data-a="go" data-v="plans"><span class="row">${IC.plans} Plans</span>${chev}</button>
+      ${plan ? `<div class="card"><h2>Plan: ${esc(plan.name)}</h2><div class="list">${plan.exerciseIds.map((id) => { const e = D.exercise(id); return e ? `<button class="item" data-a="openEx" data-ex="${id}" data-cat="${e.cats[0]}" data-wid="${act.id}"><span>${done.has(id) ? ICON.checkCircle : ICON.circle}</span><span class="grow">${esc(e.name)}</span>${chev}</button>` : ''; }).join('')}</div></div>` : ''}
       ${recents.length ? `<div class="card"><h2>Recent exercises</h2><div class="chips">${recents.map((id) => { const e = D.exercise(id); return `<button class="chip" data-a="openEx" data-ex="${id}" data-cat="${e.cats[0]}" data-wid="${act.id}">${esc(e.name)}</button>`; }).join('')}</div></div>` : ''}
       ${setsHtml(act.id)}`,
   };
 };
 
-V.addset = (p) => ({ title: 'Add set', html: catGrid(p.wid) + `<button class="card row between" style="width:100%" data-a="openCat" data-cat="" data-wid="${p.wid}"><span>🔍 Search all exercises</span>${chev}</button>` });
+V.addset = (p) => ({ title: 'Add set', html: catGrid(p.wid) + `<button class="card row between" style="width:100%" data-a="openCat" data-cat="" data-wid="${p.wid}"><span>${ICON.search} Search all exercises</span>${chev}</button>` });
 
 function exResults(p, q) {
   let list = p.cat && p.cat !== 'mix' ? D.exercisesIn(p.cat) : D.activeExercises();
   if (q) list = list.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
-  if (!list.length) return empty('🔍', 'No exercises found', 'Add a custom exercise with the ＋ button.');
-  return `<div class="card list">${list.map((e) => `<button class="item" data-a="openEx" data-ex="${e.id}" data-cat="${p.cat || e.cats[0]}" data-wid="${p.wid}">${thumb(e)}<div class="grow"><b>${esc(e.name)}</b><div class="small muted">${cap(e.equip)} ${e.cats.map(badge).join(' ')}</div></div>${chev}</button>`).join('')}</div>`;
+  if (!list.length) return empty(ICON.search, 'No exercises found', 'Add a custom exercise with the ＋ button.');
+  return `<div class="card list">${list.map((e) => `<button class="item" data-a="openEx" data-ex="${e.id}" data-cat="${p.cat || e.cats[0]}" data-wid="${p.wid}">${thumb(e)}<div class="grow"><b>${esc(e.name)}</b><div class="small muted">${cap(e.equip)} ${focusBadge(e)}</div></div>${chev}</button>`).join('')}</div>`;
 }
 V.exlist = (p) => ({
   title: p.cat ? cap(p.cat) : 'All exercises', right: `<button class="hbtn" data-a="newExercise" data-cat="${p.cat || ''}">＋ New</button>`,
@@ -210,7 +254,7 @@ function initSetForm(mode, ex, cat, wid, setId) {
 }
 V.set = () => {
   const f = U.form; const ex = D.exercise(f.exId);
-  if (!ex) return { title: 'Set', html: empty('⚠️', 'Exercise not found') };
+  if (!ex) return { title: 'Set', html: empty(ICON.warning, 'Exercise not found') };
   const edit = f.mode === 'edit';
   const recorded = f.wid ? D.setsFor(f.wid).filter((s) => s.exerciseId === ex.id) : [];
   const n = edit ? D.setById(f.setId).setOrder : recorded.length + 1;
@@ -225,25 +269,26 @@ V.set = () => {
     const step = ex.wStep > 0 ? ex.wStep : 2.5; const vals = [];
     for (let v = ex.wMin; v <= ex.wMax + 1e-9 && vals.length < 400; v += step) vals.push(r2(v));
     if (f.weight > 0 && !vals.some((v) => Math.abs(v - f.weight) < 1e-4)) { vals.push(f.weight); vals.sort((a, b) => a - b); }
-    wheels.push(wheel('weight', vals.map((v) => ({ v, t: num(v) })), near(vals, f.weight), (ex.mult > 1 ? 'Weight (kg) per dumbbell' : 'Weight (kg)'), '', '<button class="link small" data-a="typeVal" data-k="weight">✎ Type value</button>'));
+    wheels.push(wheel('weight', vals.map((v) => ({ v, t: num(v) })), near(vals, f.weight), (ex.mult > 1 ? 'Weight (kg) per dumbbell' : 'Weight (kg)'), '', `<button class="link small" data-a="typeVal" data-k="weight">${ICON.edit} Type value</button>`));
   }
   if (ex.repBehavior === 'reps') {
     const vals = Array.from({ length: 60 }, (_, i) => i + 1); const cur = Math.round(f.reps);
     if (!vals.includes(cur) && cur > 0) { vals.push(cur); vals.sort((a, b) => a - b); }
-    wheels.push(wheel('reps', vals.map((v) => ({ v, t: String(v) })), near(vals, cur), 'Reps', '', '<button class="link small" data-a="typeVal" data-k="reps">✎ Type value</button>'));
+    wheels.push(wheel('reps', vals.map((v) => ({ v, t: String(v) })), near(vals, cur), 'Reps', '', `<button class="link small" data-a="typeVal" data-k="reps">${ICON.edit} Type value</button>`));
   } else {
     const vals = Array.from({ length: 120 }, (_, i) => i + 1);
     if (f.minutes > 0 && !vals.some((v) => Math.abs(v - f.minutes) < 1e-4)) { vals.push(f.minutes); vals.sort((a, b) => a - b); }
-    wheels.push(wheel('minutes', vals.map((v) => ({ v, t: num(v) })), near(vals, f.minutes), 'Minutes', '', '<button class="link small" data-a="typeVal" data-k="minutes">✎ Type value</button>'));
+    wheels.push(wheel('minutes', vals.map((v) => ({ v, t: num(v) })), near(vals, f.minutes), 'Minutes', '', `<button class="link small" data-a="typeVal" data-k="minutes">${ICON.edit} Type value</button>`));
   }
   const out = ex.weightBehavior === 'free' && f.weight > 0 && (f.weight > ex.wMax || f.weight < ex.wMin);
   const c0 = CAT_COLOR[ex.cats[0]] || '#888';
-  const heroImg = ex.image ? `<div class="hero-img" style="background-image:url('${esc(ex.image)}')"></div>`
-    : `<div class="hero-img" style="background:linear-gradient(135deg,${c0},${c0}88)"><span class="hero-emoji">${EQ_ICON[ex.equip] || ''}</span><div class="img-over" style="background-image:url('images/${esc(ex.id)}.jpg')"></div></div>`;
+  const src = ex.image || ex.gymImage;
+  const heroImg = src ? `<div class="hero-img exercise-picture"><img src="${esc(src)}" alt="${esc(ex.name)} — ${esc(ex.focus || ex.cats.map(cap).join(', '))}" decoding="async"></div>`
+    : `<div class="hero-img" style="background:linear-gradient(135deg,${c0},${c0}88)"><span class="hero-icon">${EQ_ICON[ex.equip] || ''}</span><div class="img-over" style="background-image:url('images/${esc(ex.id)}.jpg')"></div></div>`;
   return {
     title: edit ? 'Edit set' : ex.name,
-    bottom: `<div class="row" style="gap:10px">${edit ? '' : '<button class="btn ghost" style="flex:1;width:auto;font-size:16px" data-a="finishEx">✓ Finish exercise</button>'}<button class="btn" style="flex:1.5;width:auto" data-a="saveSet" ${valid(ex) ? '' : 'disabled'}>OK — ${edit ? 'Update' : 'Save'} Set ${n}</button></div>`,
-    html: `<div class="hero">${heroImg}<span class="pill hero-pill">Set ${n}</span><div class="hero-bot"><div class="hero-name">${esc(ex.name)}</div><div>${badge(f.cat)} <span class="hero-eq">${cap(ex.equip)}</span></div></div></div>
+    bottom: `<div class="row" style="gap:10px">${edit ? '' : `<button class="btn ghost" style="flex:1;width:auto;font-size:16px" data-a="finishEx">${ICON.checkCircle} Finish exercise</button>`}<button class="btn" style="flex:1.5;width:auto" data-a="saveSet" ${valid(ex) ? '' : 'disabled'}>OK — ${edit ? 'Update' : 'Save'} Set ${n}</button></div>`,
+    html: `<div class="hero">${heroImg}<span class="pill hero-pill">Set ${n}</span><div class="hero-bot"><div class="hero-name">${esc(ex.name)}</div><div>${focusBadge(ex)} <span class="hero-eq">${cap(ex.equip)}</span></div></div></div>
       <div class="card wheels">${wheels.join('')}</div>
       ${ex.mult > 1 ? '<div class="small muted" style="margin:-4px 4px 10px">Weight is per dumbbell — volume counts both dumbbells (×2).</div>' : ''}
       ${out ? `<div class="warn" style="margin:-4px 4px 10px">Outside the usual range for this exercise (${num(ex.wMin)}–${num(ex.wMax)} kg). You can still save it.</div>` : ''}
@@ -301,7 +346,7 @@ V.history = () => {
 
 V.wdetail = (p) => {
   const w = D.workout(p.id);
-  if (!w) return { title: 'Workout', html: empty('❓', 'Workout not found') };
+  if (!w) return { title: 'Workout', html: empty(ICON.help, 'Workout not found') };
   const sets = D.setsFor(w.id);
   const exVol = groupSets(sets).flatMap((g) => g.ex).map((e) => `<div class="row between" style="padding:4px 0"><span>${esc(e.name)}</span><span class="muted">${vol(e.sets.reduce((t, s) => t + setVolume(s), 0))}</span></div>`).join('');
   return {
@@ -320,19 +365,19 @@ V.plans = () => ({
   html: D.db().plans.length ? `<div class="card list">${D.db().plans.map((p) => {
     const cats = []; p.exerciseIds.forEach((id) => (D.exercise(id)?.cats || []).forEach((c) => { if (!cats.includes(c)) cats.push(c); }));
     return `<button class="item" data-a="go" data-v="plan" data-id="${p.id}"><div class="grow"><b>${esc(p.name)}</b><div class="small muted">${p.exerciseIds.length} exercises</div><div>${cats.map(badge).join(' ')}</div></div>${chev}</button>`;
-  }).join('')}</div>` : empty('📋', 'No plans yet', 'Create routines like Push / Pull / Legs. Plans are templates — they never appear in your history.'),
+  }).join('')}</div>` : empty(ICON.note, 'No plans yet', 'Create routines like Push / Pull / Legs. Plans are templates — they never appear in your history.'),
 });
 V.plan = (p) => {
   const pl = D.plan(p.id);
-  if (!pl) return { title: 'Plan', html: empty('❓', 'Plan not found') };
+  if (!pl) return { title: 'Plan', html: empty(ICON.help, 'Plan not found') };
   return {
     title: pl.name, right: `<button class="hbtn" data-a="delPlan" data-id="${pl.id}">Delete</button>`,
     html: `<div class="field"><input class="text" data-plan-name value="${esc(pl.name)}" placeholder="Plan name"></div>
       <div class="card"><h2>Exercises (in order)</h2>${pl.exerciseIds.length ? pl.exerciseIds.map((id, i) => { const e = D.exercise(id); return `<div class="set-line"><span class="grow">${e ? esc(e.name) : 'Removed exercise'}</span>
         <button class="hbtn" data-a="planMove" data-id="${pl.id}" data-i="${i}" data-d="-1" ${i === 0 ? 'disabled style="opacity:.3"' : ''}>↑</button><button class="hbtn" data-a="planMove" data-id="${pl.id}" data-i="${i}" data-d="1" ${i === pl.exerciseIds.length - 1 ? 'disabled style="opacity:.3"' : ''}>↓</button>
-        <button class="x" data-a="planRemove" data-id="${pl.id}" data-i="${i}">✕</button></div>`; }).join('') : '<div class="muted">No exercises yet</div>'}
+        <button class="x" data-a="planRemove" data-id="${pl.id}" data-i="${i}">${ICON.close}</button></div>`; }).join('') : '<div class="muted">No exercises yet</div>'}
         <button class="btn ghost small" style="margin-top:10px" data-a="planAdd" data-id="${pl.id}">＋ Add exercises</button></div>
-      <button class="btn small" data-a="planStart" data-id="${pl.id}" ${pl.exerciseIds.length ? '' : 'disabled'}>▶ Start workout with this plan</button>
+      <button class="btn small" data-a="planStart" data-id="${pl.id}" ${pl.exerciseIds.length ? '' : 'disabled'}>${ICON.play} Start workout with this plan</button>
       <div class="small muted" style="margin-top:8px">The plan is only a shortcut list during a workout. Only the sets you actually record are saved to history.</div>`,
   };
 };
@@ -341,7 +386,7 @@ V.plan = (p) => {
 function libResults(q) {
   let list = U.filter ? D.exercisesIn(U.filter) : D.activeExercises();
   if (q) list = list.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
-  return `<div class="card list">${list.map((e) => `<button class="item" data-a="editExercise" data-ex="${e.id}">${thumb(e)}<div class="grow"><b>${esc(e.name)}</b><div class="small muted">${cap(e.equip)} ${e.cats.map(badge).join(' ')}</div></div>${chev}</button>`).join('') || '<div class="muted">No exercises</div>'}</div>`;
+  return `<div class="card list">${list.map((e) => `<button class="item" data-a="editExercise" data-ex="${e.id}">${thumb(e)}<div class="grow"><b>${esc(e.name)}</b><div class="small muted">${cap(e.equip)} ${focusBadge(e)}</div></div>${chev}</button>`).join('') || '<div class="muted">No exercises</div>'}</div>`;
 }
 V.library = () => ({
   title: 'Exercise library', right: '<button class="hbtn" data-a="newExercise" data-cat="">＋ New</button>',
@@ -349,7 +394,7 @@ V.library = () => ({
     <div class="field"><input class="text" data-live="library" placeholder="Search exercises" value="${esc(U.q)}"></div><div id="results">${libResults(U.q)}</div>`,
 });
 function machineEditor(list, src) {
-  return `${list.map((m, i) => `<div class="ms-row"><span class="muted small">Setting</span><input inputmode="numeric" style="max-width:70px" value="${m.setting}" data-ms="setting" data-i="${i}" data-src="${src}"><span>/</span><input inputmode="decimal" style="max-width:90px" value="${num(m.weight)}" data-ms="weight" data-i="${i}" data-src="${src}"><span class="muted small">kg</span><button class="x" data-a="msDel" data-i="${i}" data-src="${src}">✕</button></div>`).join('')}
+  return `${list.map((m, i) => `<div class="ms-row"><span class="muted small">Setting</span><input inputmode="numeric" style="max-width:70px" value="${m.setting}" data-ms="setting" data-i="${i}" data-src="${src}"><span>/</span><input inputmode="decimal" style="max-width:90px" value="${num(m.weight)}" data-ms="weight" data-i="${i}" data-src="${src}"><span class="muted small">kg</span><button class="x" data-a="msDel" data-i="${i}" data-src="${src}">${ICON.close}</button></div>`).join('')}
     <div class="row"><button class="btn ghost small" data-a="msAdd" data-src="${src}">＋ Add setting</button></div>
     <hr class="sp"><div class="lbl">Generate a list</div><div class="row"><span class="small muted">Count</span><input class="text" inputmode="numeric" style="width:70px" value="15" id="genN"><span class="small muted">× kg each</span><input class="text" inputmode="decimal" style="width:80px" value="5" id="genKg"><button class="btn ghost small" style="width:auto;padding:10px 14px" data-a="msGen" data-src="${src}">Replace</button></div>
     <div class="small muted" style="margin-top:6px">Setting is the pin/plate index on the machine; weight is the actual load. They are stored separately.</div>`;
@@ -386,17 +431,17 @@ V.progress = () => {
   const link = (icon, t, a, extra = '') => `<button class="item" data-a="go" data-v="${a}"><span style="width:28px">${icon}</span><span class="grow">${t}${extra}</span>${chev}</button>`;
   return {
     title: 'Progress', html: `${periodSeg()}
-    <button class="card" style="width:100%;text-align:left" data-a="go" data-v="exprog"><div class="row between"><h2>💪 Strength</h2>${chev}</div><div class="row">${stat('Total volume', vol(A.totalVolume(p)))}${stat('New records', A.pbCountIn(A.interval(p)))}${stat('Sets', A.setCount(p))}</div>${barChart(A.volumeSeries(p), { height: 110 })}</button>
-    <button class="card" style="width:100%;text-align:left" data-a="go" data-v="weight"><div class="row between"><h2>⚖️ Body</h2>${chev}</div><div class="row">${stat('Weight', t.current != null ? kg(t.current) : '—', t.windowChange != null ? signed(t.windowChange, 'kg') : '')}${stat('Waist', wt.current != null ? num(wt.current) + ' cm' : '—', wt.windowChange != null ? signed(wt.windowChange, 'cm') : '')}</div>${lineChart(A.pointsIn(bw, p), { height: 120 })}</button>
-    <button class="card" style="width:100%;text-align:left" data-a="go" data-v="steps"><div class="row between"><h2>👟 Activity</h2>${chev}</div><div class="row">${stat('Avg steps / day', A.avgSteps(p) != null ? big(A.avgSteps(p)) : '—')}${stat('Workouts', A.workoutCount(p))}</div>${barChart(A.pointsIn(A.stepPoints(), p), { color: 'var(--green)', height: 110 })}</button>
-    <button class="card" style="width:100%;text-align:left" data-a="go" data-v="consistency"><div class="row between"><h2>📅 Consistency</h2>${chev}</div><div class="row">${stat('Per week', num(Math.round(A.avgWorkoutsPerWeek(p) * 10) / 10))}${stat('Since last workout', A.daysSinceLastWorkout() == null ? '—' : A.daysSinceLastWorkout() === 0 ? 'Today' : A.daysSinceLastWorkout() + ' d')}</div>${barChart(A.workoutCountSeries(p), { color: 'var(--blue)', height: 100 })}</button>
-    <div class="card list">${link('📊', 'Exercise progress', 'exprog')}${link('🧍', 'Muscle progress', 'muscles')}${link('🏆', 'Personal bests', 'bests')}${link('⚖️', 'Body weight', 'weight')}${link('📏', 'Body measurements', 'measures')}${link('👟', 'Steps', 'steps')}${link('📅', 'Workout consistency', 'consistency')}${link('🎯', 'Goals', 'goals')}${link('⚠️', 'Plateau detection', 'plateau', flags ? ` (${flags})` : '')}${link('🕘', 'Workout history', 'history')}${link('📄', 'Report (PDF)', 'report')}</div>`,
+    <button class="card" style="width:100%;text-align:left" data-a="go" data-v="exprog"><div class="row between"><h2>${ICON.dumbbell} Strength</h2>${chev}</div><div class="row">${stat('Total volume', vol(A.totalVolume(p)))}${stat('New records', A.pbCountIn(A.interval(p)))}${stat('Sets', A.setCount(p))}</div>${barChart(A.volumeSeries(p), { height: 110 })}</button>
+    <button class="card" style="width:100%;text-align:left" data-a="go" data-v="weight"><div class="row between"><h2>${ICON.scale} Body</h2>${chev}</div><div class="row">${stat('Weight', t.current != null ? kg(t.current) : '—', t.windowChange != null ? signed(t.windowChange, 'kg') : '')}${stat('Waist', wt.current != null ? num(wt.current) + ' cm' : '—', wt.windowChange != null ? signed(wt.windowChange, 'cm') : '')}</div>${lineChart(A.pointsIn(bw, p), { height: 120 })}</button>
+    <button class="card" style="width:100%;text-align:left" data-a="go" data-v="steps"><div class="row between"><h2>${ICON.shoe} Activity</h2>${chev}</div><div class="row">${stat('Avg steps / day', A.avgSteps(p) != null ? big(A.avgSteps(p)) : '—')}${stat('Workouts', A.workoutCount(p))}</div>${barChart(A.pointsIn(A.stepPoints(), p), { color: 'var(--green)', height: 110 })}</button>
+    <button class="card" style="width:100%;text-align:left" data-a="go" data-v="consistency"><div class="row between"><h2>${ICON.calendar} Consistency</h2>${chev}</div><div class="row">${stat('Per week', num(Math.round(A.avgWorkoutsPerWeek(p) * 10) / 10))}${stat('Since last workout', A.daysSinceLastWorkout() == null ? '—' : A.daysSinceLastWorkout() === 0 ? 'Today' : A.daysSinceLastWorkout() + ' d')}</div>${barChart(A.workoutCountSeries(p), { color: 'var(--blue)', height: 100 })}</button>
+    <div class="card list">${link(ICON.chart, 'Exercise progress', 'exprog')}${link(ICON.body, 'Muscle progress', 'muscles')}${link(ICON.trophy, 'Personal bests', 'bests')}${link(ICON.scale, 'Body weight', 'weight')}${link(ICON.ruler, 'Body measurements', 'measures')}${link(ICON.shoe, 'Steps', 'steps')}${link(ICON.calendar, 'Workout consistency', 'consistency')}${link(ICON.target, 'Goals', 'goals')}${link(ICON.warning, 'Plateau detection', 'plateau', flags ? ` (${flags})` : '')}${link(ICON.clock, 'Workout history', 'history')}</div>`,
   };
 };
 
 function exprogResults(q) {
   const ids = A.exercisesWithHistory().filter((id) => !q || (D.exercise(id)?.name || '').toLowerCase().includes(q.toLowerCase()));
-  if (!ids.length) return empty('📊', 'No exercise history yet', 'Record sets in a workout to see progress here.');
+  if (!ids.length) return empty(ICON.chart, 'No exercise history yet', 'Record sets in a workout to see progress here.');
   return `<div class="card list">${ids.map((id) => { const b = A.bests(id); return `<button class="item" data-a="go" data-v="exdetail" data-id="${id}"><div class="grow"><b>${esc(b.name)}</b><div class="small muted">${b.bestWeight ? 'Best ' + esc(b.bestWeight.detail) + ' · ' : ''}${A.sessions(id).length} sessions</div></div>${chev}</button>`; }).join('')}</div>`;
 }
 V.exprog = () => ({ title: 'Exercise progress', html: `<div class="field"><input class="text" data-live="exprog" placeholder="Search exercises" value="${esc(U.q)}"></div><div id="results">${exprogResults(U.q)}</div>` });
@@ -430,14 +475,14 @@ V.muscle = (p) => {
 V.bests = () => {
   const all = A.allBests();
   return {
-    title: 'Personal bests', html: all.length ? `<div class="card list">${all.map((b) => `<button class="item" data-a="go" data-v="exdetail" data-id="${b.exerciseId}"><div class="grow"><b>${esc(b.name)}</b><div class="small muted">Weight: ${esc(b.bestWeight?.detail || '—')} · Reps: ${b.bestReps ? b.bestReps.value : '—'}<br>Volume: set ${b.bestSetVolume ? vol(b.bestSetVolume.value) : '—'} · session ${b.bestSessionVolume ? vol(b.bestSessionVolume.value) : '—'}</div></div>${chev}</button>`).join('')}</div>` : empty('🏆', 'No records yet', 'Personal bests are calculated from your recorded sets.'),
+    title: 'Personal bests', html: all.length ? `<div class="card list">${all.map((b) => `<button class="item" data-a="go" data-v="exdetail" data-id="${b.exerciseId}"><div class="grow"><b>${esc(b.name)}</b><div class="small muted">Weight: ${esc(b.bestWeight?.detail || '—')} · Reps: ${b.bestReps ? b.bestReps.value : '—'}<br>Volume: set ${b.bestSetVolume ? vol(b.bestSetVolume.value) : '—'} · session ${b.bestSessionVolume ? vol(b.bestSessionVolume.value) : '—'}</div></div>${chev}</button>`).join('')}</div>` : empty(ICON.trophy, 'No records yet', 'Personal bests are calculated from your recorded sets.'),
   };
 };
 V.plateau = () => {
   const weeks = D.db().profile.plateauWeeks; const flags = A.plateaus(weeks);
   return {
     title: 'Plateau detection', html: `<div class="small muted" style="margin-bottom:10px">Informational only. An exercise is flagged when it has at least 3 sessions in the last ${weeks} weeks and none clearly beat the first one (heavier weight or more than 5% more work). Change the period in Profile.</div>
-    ${flags.length ? `<div class="card list">${flags.map((f) => `<button class="item" data-a="go" data-v="exdetail" data-id="${f.exerciseId}"><div class="grow"><b>${esc(f.message)}</b><div class="small muted">${esc(f.reason)}</div></div>${chev}</button>`).join('')}</div>` : empty('✅', 'Nothing flagged', 'No exercises look stalled right now.')}`,
+    ${flags.length ? `<div class="card list">${flags.map((f) => `<button class="item" data-a="go" data-v="exdetail" data-id="${f.exerciseId}"><div class="grow"><b>${esc(f.message)}</b><div class="small muted">${esc(f.reason)}</div></div>${chev}</button>`).join('')}</div>` : empty(ICON.checkCircle, 'Nothing flagged', 'No exercises look stalled right now.')}`,
   };
 };
 V.consistency = () => {
@@ -445,7 +490,7 @@ V.consistency = () => {
   return {
     title: 'Consistency', html: `${periodSeg()}<div class="grid2">${tile('Workouts', A.workoutCount(p))}${tile('Average / week', num(Math.round(A.avgWorkoutsPerWeek(p) * 10) / 10))}${tile('Sets', A.setCount(p))}${tile('Total volume', vol(A.totalVolume(p)))}</div>
     <div class="card"><h2>Workout frequency (per ${bc})</h2>${barChart(A.workoutCountSeries(p), { color: 'var(--blue)' })}</div><div class="card"><h2>Overall workout volume (per ${bc})</h2>${barChart(A.volumeSeries(p))}</div>
-    <button class="card row between" style="width:100%" data-a="go" data-v="history"><span>🕘 Training history</span>${chev}</button>`,
+    <button class="card row between" style="width:100%" data-a="go" data-v="history"><span>${ICON.clock} Training history</span>${chev}</button>`,
   };
 };
 
@@ -468,7 +513,7 @@ V.metric = (p) => {
       ${h('This period', t.windowChange != null ? signed(t.windowChange, c.unit) : '—', t.reference != null && t.current != null ? num(t.reference) + ' → ' + num(t.current) : '')}
       ${c.bar ? h('Average', avg != null ? big(avg) : '—', 'per day') : h('Since last', t.changeFromPrevious != null ? signed(t.changeFromPrevious, c.unit) : '—', '')}</div>
       ${c.bar ? barChart(win, { color: 'var(--green)' }) : lineChart(win)}</div>
-    <h2 class="sec">History</h2><div class="card list">${rows.map((r) => `<div class="item"><button class="row grow between" data-a="metricEdit" data-id="${r.id}"><span>${dstr(r.date)}</span><b>${num(r.v)} ${c.unit}</b></button><button class="x" data-a="metricDel" data-id="${r.id}">✕</button></div>`).join('') || '<div class="muted">No entries yet</div>'}</div>`,
+    <h2 class="sec">History</h2><div class="card list">${rows.map((r) => `<div class="item"><button class="row grow between" data-a="metricEdit" data-id="${r.id}"><span>${dstr(r.date)}</span><b>${num(r.v)} ${c.unit}</b></button><button class="x" data-a="metricDel" data-id="${r.id}">${ICON.close}</button></div>`).join('') || '<div class="muted">No entries yet</div>'}</div>`,
   };
 };
 V.weight = () => V.metric({ kind: 'weight' });
@@ -477,7 +522,7 @@ V.measures = () => {
   const fields = [...D.db().fields].sort((a, b) => a.order - b.order);
   return {
     title: 'Measurements', right: '<button class="hbtn" data-a="newField">＋ New</button>',
-    html: `${periodSeg()}<div class="card list">${fields.map((f) => { const t = A.trend(A.measurementPoints(f.id), U.period); return `<div class="item"><button class="row grow between" data-a="go" data-v="measure" data-id="${f.id}"><span>${esc(f.name)}</span><span style="text-align:right"><b>${t.current != null ? num(t.current) + ' cm' : '—'}</b>${t.windowChange != null && t.reference != null ? `<div class="small muted">${signed(t.windowChange, 'cm')}</div>` : ''}</span></button>${f.custom ? `<button class="x" data-a="delField" data-id="${f.id}">✕</button>` : ''}</div>`; }).join('')}</div>
+    html: `${periodSeg()}<div class="card list">${fields.map((f) => { const t = A.trend(A.measurementPoints(f.id), U.period); return `<div class="item"><button class="row grow between" data-a="go" data-v="measure" data-id="${f.id}"><span>${esc(f.name)}</span><span style="text-align:right"><b>${t.current != null ? num(t.current) + ' cm' : '—'}</b>${t.windowChange != null && t.reference != null ? `<div class="small muted">${signed(t.windowChange, 'cm')}</div>` : ''}</span></button>${f.custom ? `<button class="x" data-a="delField" data-id="${f.id}">${ICON.close}</button>` : ''}</div>`; }).join('')}</div>
     <div class="small muted">Every measurement is optional and tracked on its own.</div>`,
   };
 };
@@ -487,47 +532,57 @@ V.goals = () => {
   const goals = D.db().goals;
   return {
     title: 'Goals', right: '<button class="hbtn" data-a="newGoal">＋ New</button>',
-    html: `<div class="small muted" style="margin-bottom:10px">Goals are optional. Add as many or as few as you like.</div>${goals.length ? goals.map((g) => { const r = A.goalProgress(g); return `<div class="card"><div class="row between"><b>${esc(r.title)}</b><span style="display:flex;gap:8px;align-items:center"><b style="color:var(--accent)">${Math.round(r.fraction * 100)}%</b><button class="x" data-a="delGoal" data-id="${g.id}">✕</button></span></div><div class="bar" style="margin:8px 0"><i style="width:${r.fraction * 100}%"></i></div><div class="small muted">Now ${esc(r.currentText)} → goal ${esc(r.targetText)}</div></div>`; }).join('') : empty('🎯', 'No goals', 'Tap ＋ New to add one, e.g. Bench Press 50 kg or Waist 80 cm.')}`,
-  };
-};
-
-V.report = () => {
-  const p = U.period; const bw = A.bodyWeightPoints(); const bests = A.allBests();
-  return {
-    title: 'Report', right: '<button class="hbtn" data-a="print">Print / PDF</button>',
-    html: `${periodSeg()}<div class="card"><h2 style="font-size:20px">GIM Progress Report</h2><div class="small muted">${PERIOD_INFO[p].window} · generated ${fmtDay(Date.now())}</div>
-    <div class="grid2" style="margin-top:10px">${tile('Workouts', A.workoutCount(p))}${tile('Sets', A.setCount(p))}${tile('Total volume', vol(A.totalVolume(p)))}${tile('Avg / week', num(Math.round(A.avgWorkoutsPerWeek(p) * 10) / 10))}</div></div>
-    <div class="card"><h2>Workout volume</h2>${barChart(A.volumeSeries(p))}</div><div class="card"><h2>Workout frequency</h2>${barChart(A.workoutCountSeries(p), { color: 'var(--blue)' })}</div>
-    <div class="card"><h2>Body weight${bw.length ? ' — now ' + kg(bw[bw.length - 1].v) : ''}</h2>${lineChart(A.pointsIn(bw, p))}</div>
-    <div class="card"><h2>Steps${A.avgSteps(p) != null ? ' — avg ' + big(A.avgSteps(p)) + ' / day' : ''}</h2>${barChart(A.pointsIn(A.stepPoints(), p), { color: 'var(--green)' })}</div>
-    <div class="card"><h2>Personal bests</h2>${bests.map((b) => `<div style="padding:5px 0;border-bottom:1px solid var(--line)"><b class="small">${esc(b.name)}</b><div class="small muted">Weight ${esc(b.bestWeight?.detail || '—')} · Reps ${b.bestReps ? b.bestReps.value : '—'} · Set vol ${b.bestSetVolume ? vol(b.bestSetVolume.value) : '—'} · Session vol ${b.bestSessionVolume ? vol(b.bestSessionVolume.value) : '—'}</div></div>`).join('') || '<div class="muted">No records yet</div>'}</div>`,
+    html: `<div class="small muted" style="margin-bottom:10px">Goals are optional. Add as many or as few as you like.</div>${goals.length ? goals.map((g) => { const r = A.goalProgress(g); return `<div class="card"><div class="row between"><b>${esc(r.title)}</b><span style="display:flex;gap:8px;align-items:center"><b style="color:var(--accent)">${Math.round(r.fraction * 100)}%</b><button class="x" data-a="delGoal" data-id="${g.id}">${ICON.close}</button></span></div><div class="bar" style="margin:8px 0"><i style="width:${r.fraction * 100}%"></i></div><div class="small muted">Now ${esc(r.currentText)} → goal ${esc(r.targetText)}</div></div>`; }).join('') : empty(ICON.target, 'No goals', 'Tap ＋ New to add one, e.g. Bench Press 50 kg or Waist 80 cm.')}`,
   };
 };
 
 // ----- profile & backup -----
 V.profile = () => {
-  const pr = D.db().profile; const lw = D.latestBodyWeight();
+  const d = D.db(); const pr = d.profile; const lw = D.latestBodyWeight(); const theme = localStorage.getItem('gim-theme') || 'system';
+  const row = (icon, color, title, sub, action) => `<button class="item" ${action}><span class="rowic" style="background:${color}22;color:${color}">${icon}</span><span class="grow">${title}${sub ? `<div class="small muted">${sub}</div>` : ''}</span>${chev}</button>`;
   return {
-    title: 'Profile', html: `<div class="card"><div class="field"><label class="lbl">Name (optional)</label><input class="text" data-profile="name" value="${esc(pr.name)}"></div>
-      <div class="field"><label class="lbl">Height (cm)</label><input class="text" inputmode="decimal" data-profile="heightCm" value="${pr.heightCm ?? ''}"></div>
-      <button class="row between" style="width:100%" data-a="weightEntry"><span>Current body weight</span><b>${lw ? kg(lw.kg) : 'Add'}</b></button></div>
-      <div class="card"><div class="field"><label class="lbl">Appearance</label><select class="text" data-change="theme">${['system', 'light', 'dark'].map((t) => `<option value="${t}" ${(localStorage.getItem('gim-theme') || 'system') === t ? 'selected' : ''}>${cap(t)}</option>`).join('')}</select></div>
-      <div class="field"><label class="lbl">Plateau check period (weeks)</label>${'<select class="text" data-change="plateauWeeks">' + [2, 3, 4, 6, 8, 12].map((w) => `<option ${pr.plateauWeeks === w ? 'selected' : ''}>${w}</option>`).join('') + '</select>'}</div>
-      <div class="row between small muted"><span>Weight unit</span><span>kg</span></div><div class="row between small muted"><span>Measurement unit</span><span>cm</span></div></div>
-      <div class="card list"><button class="item" data-a="go" data-v="library"><span class="grow">Exercise library</span>${chev}</button><button class="item" data-a="go" data-v="measures"><span class="grow">Body measurements</span>${chev}</button><button class="item" data-a="go" data-v="goals"><span class="grow">Goals</span>${chev}</button><button class="item" data-a="go" data-v="history"><span class="grow">Workout history</span>${chev}</button><button class="item" data-a="go" data-v="backup"><span class="grow">Backup, restore & export</span>${chev}</button></div>
-      <div class="center small muted" style="margin:14px 0">GIM version ${VERSION} · ${BUILD_DATE}</div>`,
+    title: 'Settings', html: `
+    <h2 class="sec">Profile</h2>
+    <div class="card"><div class="row" style="gap:12px;margin-bottom:12px"><span class="avatar">${esc((pr.name || '').trim().charAt(0).toUpperCase()) || IC.user}</span>
+      <div class="grow"><label class="lbl">Name (optional)</label><input class="text" data-profile="name" value="${esc(pr.name)}" placeholder="Your name"></div></div>
+      <div class="row" style="gap:12px"><div class="grow"><label class="lbl">Height (cm)</label><input class="text" inputmode="decimal" data-profile="heightCm" value="${pr.heightCm ?? ''}" placeholder="—"></div>
+      <button class="grow" style="text-align:left" data-a="go" data-v="weight"><label class="lbl">Current weight</label><div style="font-size:20px;font-weight:800;padding:6px 0">${lw ? kg(lw.kg) : 'Add'} <span class="muted" style="font-size:14px;font-weight:400">›</span></div></button></div></div>
+
+    <h2 class="sec">Training</h2>
+    <div class="card list">
+      ${row(IC.library, '#F26A21', 'Exercise library', d.exercises.filter((e) => !e.archived).length + ' exercises · add or edit', 'data-a="go" data-v="library"')}
+      ${row(IC.target, '#8B5CF6', 'Goals', d.goals.length ? d.goals.length + ' active' : 'Optional targets', 'data-a="go" data-v="goals"')}
+      ${row(IC.ruler, '#2FBF71', 'Body measurements', 'Waist, chest, arms…', 'data-a="go" data-v="measures"')}
+      <div class="item" style="display:block"><div class="lbl">Plateau check period</div>${seg([2, 3, 4, 6, 8, 12].map((w) => [String(w), w + ' wk']), String(pr.plateauWeeks), 'setPlateau')}</div>
+    </div>
+
+    <h2 class="sec">History & data</h2>
+    <div class="card list">
+      ${row(IC.clock, '#3B82F6', 'Workout history', 'Calendar and past workouts', 'data-a="go" data-v="history"')}
+      ${row(IC.cloud, '#2563eb', 'Backup & Google Drive', 'Upload, export or restore your data', 'data-a="go" data-v="backup"')}
+    </div>
+
+    <h2 class="sec">Appearance & units</h2>
+    <div class="card"><div class="lbl">Theme</div>${seg([['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], theme, 'setTheme')}
+      <div class="row between small muted"><span>Weight unit</span><span>kg</span></div><div class="row between small muted" style="margin-top:4px"><span>Measurement unit</span><span>cm</span></div></div>
+
+    <h2 class="sec">About</h2>
+    <div class="card"><div class="row between"><span class="row">${IC.info} GIM version</span><b>${VERSION}</b></div><div class="small muted" style="margin-top:4px">Build date ${BUILD_DATE}. Data is stored only on this device — back it up regularly.</div></div>`,
   };
 };
 V.backup = () => {
   const d = D.db();
   return {
-    title: 'Data', html: `<h2 class="sec">Google Drive</h2><div class="card"><button class="btn small blue" data-a="driveUpload">☁️ Daily Upload</button><div class="small muted" style="margin-top:8px">${localStorage.getItem('gim-drive-last') ? 'Last upload: ' + fmtDay(+localStorage.getItem('gim-drive-last')) + ' ' + fmtTime(+localStorage.getItem('gim-drive-last')) : 'Not uploaded yet'}. Saves one file, GIM-Backup.json, in your Google Drive (overwritten each time; Drive keeps old versions).</div></div>
-      <h2 class="sec">Backup & restore</h2><div class="card"><button class="btn small" data-a="exportBackup">⬆️ Export backup file</button><div style="height:8px"></div>
-      <label class="btn ghost small" for="importFile">⬇️ Restore from backup…</label><input type="file" id="importFile" accept=".json,application/json" data-change="import" style="display:none">
+    title: 'Data', html: `<h2 class="sec">Google Drive</h2><div class="card">
+      <div class="row between"><div><b>Daily auto backup</b><div class="small muted">11 PM IST &middot; uploads when you next open GIM</div></div><button class="chip" data-a="toggleAutoBackup" aria-pressed="${autoBackupEnabled()}">${autoBackupEnabled() ? 'On' : 'Off'}</button></div>
+      <div class="small muted" style="margin:12px 0">${driveStatusText()}</div>
+      <button class="btn small" data-a="driveUpload">${autoBackupEnabled() && backupDue(localStorage.getItem('gim-drive-last')) && !validDriveToken() ? 'Reconnect Google & back up' : 'Back up now'}</button>
+      <div class="small muted" style="margin-top:8px">${localStorage.getItem('gim-drive-last') ? 'Last upload: ' + fmtDay(+localStorage.getItem('gim-drive-last')) + ' ' + fmtTime(+localStorage.getItem('gim-drive-last')) : 'Not uploaded yet'}. Saves GIM-Backup.json in your Google Drive.</div>
+      <div class="small muted" style="margin-top:8px">Google may require a reconnect when access expires. Offline or failed backups stay pending.</div></div>
+      <h2 class="sec">Backup & restore</h2><div class="card"><button class="btn small" data-a="exportBackup">${ICON.upload} Export backup file</button><div style="height:8px"></div>
+      <label class="btn ghost small" for="importFile">${ICON.download} Restore from backup…</label><input type="file" id="importFile" accept=".json,application/json" data-change="import" style="display:none">
       <div class="small muted" style="margin-top:8px">A backup contains exercises (with your photos), plans, every workout and set, body data, steps, goals and settings. Restore is validated first and never silently deletes current data.</div>
-      ${D.hasSafetyBackup() ? '<button class="link small" style="margin-top:10px" data-a="restoreSafety">Undo last "Replace" restore</button>' : ''}</div>
-      <h2 class="sec">Excel / CSV</h2><div class="card"><button class="btn small" data-a="exportCSV">📊 Export CSV files</button><div class="small muted" style="margin-top:8px">One row per individual set (date, workout, exercise, set, machine setting, weight, reps, volume), plus body weight, measurements and steps. UTF-8 with BOM: opens directly in Excel.</div></div>
-      <h2 class="sec">PDF report</h2><div class="card"><button class="btn small" data-a="go" data-v="report">📄 Open report</button><div class="small muted" style="margin-top:8px">Choose Print → Save as PDF (share sheet on iPhone).</div></div>
+      ${D.hasSafetyBackup() ? `<button class="link small" style="margin-top:10px" data-a="restoreSafety">Undo last "Replace" restore</button>` : ''}</div>
       <h2 class="sec">Stored on this device</h2><div class="card"><div class="row between"><span>Workouts</span><b>${d.workouts.length}</b></div><div class="row between"><span>Recorded sets</span><b>${d.sets.length}</b></div><div class="row between"><span>Exercises</span><b>${d.exercises.filter((e) => !e.archived).length}</b></div></div>`,
   };
 };
@@ -561,7 +616,7 @@ function pickerResults() {
   const s = U.sheet; let list = s.cat ? D.exercisesIn(s.cat) : D.activeExercises();
   list = list.filter((e) => !s.already.includes(e.id));
   if (s.q) list = list.filter((e) => e.name.toLowerCase().includes(s.q.toLowerCase()));
-  return `<div class="card list">${list.map((e) => `<button class="item" data-a="pick" data-id="${e.id}">${thumb(e)}<div class="grow"><b>${esc(e.name)}</b><div class="small muted">${cap(e.equip)}</div></div><span>${s.picked.includes(e.id) ? '✅' : '⚪️'}</span></button>`).join('')}</div>`;
+  return `<div class="card list">${list.map((e) => `<button class="item" data-a="pick" data-id="${e.id}">${thumb(e)}<div class="grow"><b>${esc(e.name)}</b><div class="small muted">${cap(e.equip)}</div></div><span>${s.picked.includes(e.id) ? ICON.checkCircle : ICON.circle}</span></button>`).join('')}</div>`;
 }
 function openEntry({ title, unit, value, step, dated = true, date, cb }) { U.sheet = { type: 'entry', title, unit, value, step, dated, date: date || D.ymd(Date.now()), cb }; render(true); }
 
@@ -576,11 +631,11 @@ function render(keep = true) {
   A = makeAnalytics(D.db());
   const cur = view(); const fn = V[cur.v];
   let r;
-  try { r = fn(cur.p); } catch (e) { console.error(e); r = { title: 'Error', html: empty('⚠️', 'Something went wrong', esc(e.message)) }; }
+  try { r = fn(cur.p); } catch (e) { console.error(e); r = { title: 'Error', html: empty(ICON.warning, 'Something went wrong', esc(e.message)) }; }
   const stack = U.stacks[U.tab]; const homeRoot = U.tab === 'home' && stack.length === 0;
-  app.innerHTML = `<div class="header">${stack.length ? '<button class="hbtn" data-a="back">‹ Back</button>' : ''}<h1>${esc(r.title)}</h1>${r.right || ''}${homeRoot ? '' : '<button class="hbtn burger" data-a="menu" aria-label="Menu">☰</button>'}</div>
-    <main>${r.html}</main>${r.bottom ? `<div class="bottombar">${r.bottom}</div>` : ''}
-    ${homeRoot ? `<nav class="tabbar">${ROOTS.map((t) => `<button class="tab ${U.tab === t ? 'on' : ''}" data-a="tab" data-v="${t}"><span class="ic">${TAB_META[t][0]}</span>${TAB_META[t][1]}</button>`).join('')}</nav>` : ''}
+  app.innerHTML = `${r.bare ? '<div class="safe-top"></div>' : `<div class="header">${stack.length ? '<button class="hbtn" data-a="back">‹ Back</button>' : ''}<h1>${esc(r.title)}</h1>${r.right || ''}</div>`}
+    <main>${homeRoot ? driveNotice() : ''}${r.html}</main>${r.bottom ? `<div class="bottombar">${r.bottom}</div>` : ''}
+    <nav class="tabbar" aria-label="Main navigation">${TABS.map((t) => `<button class="tab ${U.tab === t ? 'on' : ''}" data-a="tab" data-v="${t}" ${U.tab === t ? 'aria-current="page"' : ''}><span class="ic">${TAB_META[t][0]}</span><span>${TAB_META[t][1]}</span><i class="uline"></i></button>`).join('')}</nav>
     ${sheetHtml()}${U.menu ? menuHtml() : ''}`;
   const m2 = $('main'); if (m2) m2.scrollTop = sc;
   initWheels();
@@ -609,6 +664,32 @@ const mkFile = (name, mime, text) => { const f = new File([text], name, { type: 
 
 // ---------- Google Drive upload (one file: GIM-Backup.json, drive.file scope) ----------
 let gToken = null; let gTokenExp = 0;
+let driveBusy = false; let driveTimer = null; let driveRetryAt = 0; let driveError = ''; let driveNoticeState = '';
+const autoBackupEnabled = () => localStorage.getItem('gim-drive-auto') === '1';
+const validDriveToken = () => !!gToken && Date.now() < gTokenExp;
+function driveStatusText() {
+  if (driveBusy) return 'Uploading backup...';
+  if (!autoBackupEnabled()) return 'Enable once to schedule daily backups.';
+  if (driveError) return driveError;
+  if (!backupDue(localStorage.getItem('gim-drive-last'))) return 'Next backup is due at 11 PM IST.';
+  if (navigator.onLine === false) return 'Backup pending. It will retry when you are online.';
+  if (!validDriveToken()) return 'Backup pending. Reconnect Google to upload it.';
+  return 'Daily backup is pending.';
+}
+function driveNotice() {
+  return autoBackupEnabled() && backupDue(localStorage.getItem('gim-drive-last'))
+    ? '<div class="card backup-notice"><span class="small">' + esc(driveStatusText()) + '</span><button class="link small" data-a="go" data-v="backup">Backup</button></div>' : '';
+}
+function scheduleDailyBackup() {
+  clearTimeout(driveTimer);
+  if (!autoBackupEnabled()) return;
+  const now = Date.now();
+  const status = driveStatusText();
+  if (status !== driveNoticeState) { driveNoticeState = status; render(true); }
+  if (backupDue(localStorage.getItem('gim-drive-last')) && navigator.onLine !== false && validDriveToken() && now >= driveRetryAt && !driveBusy) void driveUpload({ automatic: true });
+  const wait = Math.min(60000, Math.max(1000, nextBackupDeadline(now) - now));
+  driveTimer = setTimeout(scheduleDailyBackup, wait);
+}
 async function gisLoad() {
   if (window.google && google.accounts && google.accounts.oauth2) return;
   await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.onload = res; s.onerror = () => rej(new Error('Could not load Google sign-in (are you online?)')); document.head.appendChild(s); });
@@ -616,7 +697,7 @@ async function gisLoad() {
 const requestToken = (clientId) => new Promise((res, rej) => {
   const c = google.accounts.oauth2.initTokenClient({
     client_id: clientId, scope: 'https://www.googleapis.com/auth/drive.file',
-    callback: (r) => (r.error ? rej(new Error(r.error_description || r.error)) : res(r.access_token)),
+    callback: (r) => { if (r.error) rej(new Error(r.error_description || r.error)); else { gTokenExp = Date.now() + Math.max(0, (Number(r.expires_in) || 3600) - 60) * 1000; res(r.access_token); } },
     error_callback: (e) => rej(new Error((e && e.type) || 'Sign-in cancelled')),
   });
   c.requestAccessToken({ prompt: gToken === null && !localStorage.getItem('gim-drive-file') ? 'consent' : '' });
@@ -625,32 +706,40 @@ function multipart(meta, body) {
   const b = 'gimboundary' + Date.now();
   return { type: 'multipart/related; boundary=' + b, body: `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--` };
 }
-async function driveUpload() {
+async function driveUpload({ automatic = false } = {}) {
+  if (driveBusy) return false;
+  if (automatic && !validDriveToken()) return false;
+  driveBusy = true;
+  driveError = '';
   const cid = GOOGLE_CLIENT_ID;
   toast('Uploading…');
   try {
-    await gisLoad();
+    if (!automatic) await gisLoad();
+    if (navigator.onLine === false) throw new Error('You are offline.');
     const json = JSON.stringify(D.makeBackup());
     for (let attempt = 0; attempt < 2; attempt++) {
-      if (!gToken || Date.now() > gTokenExp) { gToken = await requestToken(cid); gTokenExp = Date.now() + 50 * 60 * 1000; }
+      if (!validDriveToken()) { if (automatic) throw new Error('Reconnect Google to upload the pending backup.'); gToken = await requestToken(cid); }
       const auth = { Authorization: 'Bearer ' + gToken };
       const mp = multipart({ name: 'GIM-Backup.json', mimeType: 'application/json' }, json);
       const id = localStorage.getItem('gim-drive-file'); let res = null;
       if (id) res = await fetch('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=multipart', { method: 'PATCH', headers: { ...auth, 'Content-Type': mp.type }, body: mp.body });
       if (!res || res.status === 404) res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { ...auth, 'Content-Type': mp.type }, body: mp.body });
-      if (res.status === 401 && attempt === 0) { gToken = null; continue; }
+      if (res.status === 401) { gToken = null; gTokenExp = 0; if (!automatic && attempt === 0) continue; throw new Error('Reconnect Google to upload the pending backup.'); }
       if (!res.ok) throw new Error('Google Drive error ' + res.status);
       const j = await res.json(); localStorage.setItem('gim-drive-file', j.id); localStorage.setItem('gim-drive-last', String(Date.now()));
-      toast('Uploaded to Google Drive ✓'); render(true); return;
+      driveRetryAt = 0; toast('Backed up to Google Drive'); return true;
     }
-  } catch (e) { alert('Upload failed: ' + e.message); }
+  } catch (e) { driveError = 'Backup pending. ' + e.message; driveRetryAt = Date.now() + 5 * 60000; if (!automatic) alert('Upload failed: ' + e.message); return false; }
+  finally { driveBusy = false; render(true); scheduleDailyBackup(); }
 }
 const ACT = {
   back, tab: (d) => switchTab(d.v),
+  setTheme: (d) => { localStorage.setItem('gim-theme', d.v); applyTheme(); render(true); },
+  setPlateau: (d) => { D.updateProfile({ plateauWeeks: +d.v }); render(true); },
   menu: () => { U.menu = true; render(true); },
   closeMenu: (d, t, e) => { if (t.dataset.bg && e.target !== t) return; U.menu = false; render(true); },
   menuGo: (d) => { U.menu = false; U.stacks[d.v] = []; U.tab = d.v; U.q = ''; U.sheet = null; render(false); },
-  finishEx: () => { const st = U.stacks[U.tab]; while (st.length && ['set', 'exlist', 'addset'].includes(st[st.length - 1].v)) st.pop(); U.q = ''; toast('Exercise finished ✓'); render(false); },
+  finishEx: () => { const st = U.stacks[U.tab]; while (st.length && ['set', 'exlist', 'addset'].includes(st[st.length - 1].v)) st.pop(); U.q = ''; toast('Exercise finished'); render(false); },
   go: (d) => go(d.v, d.id ? { id: d.id } : {}),
   undo: () => { if (U.undo) { const d = D.db(); d.sets = U.undo.sets; d.workouts = U.undo.workouts; D.save(); U.undo = null; render(true); } },
   period: (d) => { U.period = d.v; localStorage.setItem('gim-period', d.v); render(true); },
@@ -659,7 +748,7 @@ const ACT = {
   startPlan: (d) => { D.startWorkout(d.id); render(false); },
   planStart: (d) => { D.startWorkout(d.id); U.tab = 'workout'; U.stacks.workout = []; render(false); },
   discard: () => { const w = D.activeWorkout(); if (w && confirm('Discard this workout and all its sets?')) { D.deleteWorkout(w.id); render(false); } },
-  finish: () => { const w = D.activeWorkout(); if (!w) return; const saved = D.finishWorkout(w.id); if (saved) { U.lastFinished = w.id; toast('Workout saved ✓'); } render(false); },
+  finish: () => { const w = D.activeWorkout(); if (!w) return; const saved = D.finishWorkout(w.id); if (saved) { U.lastFinished = w.id; toast('Workout saved'); } render(false); },
   openWorkout: (d) => go('wdetail', { id: d.id }),
   addSetTo: (d) => go('addset', { wid: d.id }),
   delWorkout: (d) => { if (confirm('Delete this workout and all its sets?')) { D.deleteWorkout(d.id); back(); } },
@@ -691,9 +780,9 @@ const ACT = {
       reps: ex.repBehavior === 'reps' ? Math.round(f.reps) : null,
       durationSeconds: ex.repBehavior === 'duration' ? Math.round(f.minutes * 60) : null,
     };
-    if (f.mode === 'edit') { D.updateSet(f.setId, o); toast('Set updated ✓'); back(); return; }
+    if (f.mode === 'edit') { D.updateSet(f.setId, o); toast('Set updated'); back(); return; }
     const rec = D.addSet(f.wid, ex, f.cat, o);
-    if (rec) { if (navigator.vibrate) navigator.vibrate(30); toast('Set ' + rec.setOrder + ' saved ✓'); }
+    if (rec) { if (navigator.vibrate) navigator.vibrate(30); toast('Set ' + rec.setOrder + ' saved'); }
     render(true);
   },
   weightEntry: () => { const l = D.latestBodyWeight(); openEntry({ title: 'Body weight', unit: 'kg', value: l ? l.kg : 70, step: 0.1, cb: (v, dt) => D.setBodyWeight(v, dt) }); },
@@ -708,7 +797,7 @@ const ACT = {
   closeSheet: (d, t, e) => { if (t.dataset.bg && e.target !== t) return; U.sheet = null; render(true); },
   sheetOk: () => {
     const s = U.sheet; if (!s) return;
-    if (s.type === 'entry') { s.cb(s.value, s.date); toast('Saved ✓'); }
+    if (s.type === 'entry') { s.cb(s.value, s.date); toast('Saved'); }
     else if (s.type === 'typed') { U.form[s.key] = s.key === 'reps' ? Math.max(1, Math.round(s.value)) : s.value; }
     else if (s.type === 'custom') { const st = Math.round(s.setting); D.addMachineSettingIfNeeded(s.exId, st, s.weight); U.form.sel = { setting: st, weight: s.weight }; }
     else if (s.type === 'picker') { const p = D.plan(s.planId); p.exerciseIds.push(...s.picked); D.save(); }
@@ -738,7 +827,7 @@ const ACT = {
   saveExercise: () => {
     const e = U.form.draft; e.name = e.name.trim(); if (!e.name) { alert('Please enter a name.'); return; }
     if (!e.cats.length) e.cats = ['chest'];
-    e.machine = e.machine.filter((m) => Number.isFinite(m.weight)); D.saveExercise(e); toast('Exercise saved ✓'); back();
+    e.machine = e.machine.filter((m) => Number.isFinite(m.weight)); D.saveExercise(e); toast('Exercise saved'); back();
   },
   delExercise: () => { if (confirm('Delete this exercise?')) { D.deleteExercise(U.form.draft.id); back(); } },
   msAdd: (d) => { const l = msList(d.src); l.push({ id: D.uid(), setting: Math.max(0, ...l.map((m) => m.setting)) + 1, weight: l.length ? l[l.length - 1].weight : 5 }); if (d.src === 'ex') D.save(); render(true); },
@@ -747,14 +836,14 @@ const ACT = {
     const n = Math.min(60, Math.max(1, Math.round(parseNum($('#genN').value)))); const k = parseNum($('#genKg').value) || 5;
     const list = D.defaultStack(n, k); const cur = msList(d.src); cur.length = 0; cur.push(...list); if (d.src === 'ex') D.save(); render(true);
   },
-  driveUpload,
-  print: () => window.print(),
-  exportBackup: () => { const name = 'GIM-Backup-' + D.ymd(Date.now()) + '.json'; shareFiles([mkFile(name, 'application/json', JSON.stringify(D.makeBackup()))]); },
-  exportCSV: () => {
-    const d = D.db(); const s = D.ymd(Date.now()); const B = '﻿';
-    shareFiles([mkFile(`GIM-Sets-${s}.csv`, 'text/csv', B + setsCSV(d)), mkFile(`GIM-BodyWeight-${s}.csv`, 'text/csv', B + bodyWeightCSV(d)),
-      mkFile(`GIM-Measurements-${s}.csv`, 'text/csv', B + measurementsCSV(d)), mkFile(`GIM-Steps-${s}.csv`, 'text/csv', B + stepsCSV(d))]);
+  driveUpload: () => driveUpload(),
+  toggleAutoBackup: async () => {
+    if (autoBackupEnabled()) { localStorage.setItem('gim-drive-auto', '0'); clearTimeout(driveTimer); driveError = ''; render(true); return; }
+    localStorage.setItem('gim-drive-auto', '1');
+    await driveUpload();
+    scheduleDailyBackup();
   },
+  exportBackup: () => { const name = 'GIM-Backup-' + D.ymd(Date.now()) + '.json'; shareFiles([mkFile(name, 'application/json', JSON.stringify(D.makeBackup()))]); },
   importMerge: () => { const c = D.merge(U.sheet.file.data); U.sheet = null; render(true); alert(c.total ? `Added ${c.workouts} workouts, ${c.sets} sets, ${c.exercises} exercises, ${c.bodyWeights} weights, ${c.measurements} measurements, ${c.steps} step days.` : 'Nothing new to add — your data already contains everything in this backup.'); },
   importReplace: () => {
     if (!confirm('Replace ALL current data with this backup?')) return;
@@ -862,3 +951,8 @@ if (D.loadNotice) { alert(D.loadNotice); D.clearNotice(); }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 render(false);
+
+// Catch up after app launch, returning to the app, or reconnecting to the network.
+scheduleDailyBackup();
+window.addEventListener('online', () => { driveRetryAt = 0; driveError = ''; scheduleDailyBackup(); render(true); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { scheduleDailyBackup(); render(true); } });

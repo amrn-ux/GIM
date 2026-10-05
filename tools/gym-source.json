@@ -1,0 +1,312 @@
+﻿[
+    {
+        "section":  "Chest",
+        "name":  "Flat Bench Press",
+        "image":  "images/gym/image1.gif"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Incline Bench Press",
+        "image":  "images/gym/image2.jpeg"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Decline Bench Press",
+        "image":  "images/gym/image3.gif"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Chest Press Machine",
+        "image":  "images/gym/image4.jpeg"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Chest Fly Machine",
+        "image":  "images/gym/image5.gif"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Cable Crossover",
+        "image":  "images/gym/image6.jpeg"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Dumbbell Bench Press",
+        "image":  "images/gym/image7.jpeg"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Incline Dumbbell Press",
+        "image":  "images/gym/image8.gif"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Dumbbell Fly",
+        "image":  "images/gym/image9.jpeg"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Incline Dumbbell Fly",
+        "image":  "images/gym/image10.gif"
+    },
+    {
+        "section":  "Chest",
+        "name":  "Dumbbell Pullover",
+        "image":  "images/gym/image11.gif"
+    },
+    {
+        "section":  "Back",
+        "name":  "Lat Pulldown Machine",
+        "image":  "images/gym/image12.jpeg"
+    },
+    {
+        "section":  "Back",
+        "name":  "Seated Cable Row",
+        "image":  "images/gym/image13.gif"
+    },
+    {
+        "section":  "Back",
+        "name":  "T-Bar Row",
+        "image":  "images/gym/image14.jpeg"
+    },
+    {
+        "section":  "Back",
+        "name":  "Cable Crossover",
+        "image":  "images/gym/image15.gif"
+    },
+    {
+        "section":  "Back",
+        "name":  "One-Arm Dumbbell Row",
+        "image":  "images/gym/image16.gif"
+    },
+    {
+        "section":  "Back",
+        "name":  "Chest-Supported Dumbbell Row",
+        "image":  "images/gym/image17.jpeg"
+    },
+    {
+        "section":  "Back",
+        "name":  "Dumbbell Reverse Fly",
+        "image":  "images/gym/image18.jpeg"
+    },
+    {
+        "section":  "Shoulders",
+        "name":  "Shoulder Press Machine",
+        "image":  "images/gym/image19.jpeg"
+    },
+    {
+        "section":  "Shoulders",
+        "name":  "Lateral Raise Machine",
+        "image":  "images/gym/image20.jpeg"
+    },
+    {
+        "section":  "Shoulders",
+        "name":  "Seated Dumbbell Shoulder Press",
+        "image":  "images/gym/image21.jpeg"
+    },
+    {
+        "section":  "Shoulders",
+        "name":  "Arnold Press",
+        "image":  "images/gym/image22.jpeg"
+    },
+    {
+        "section":  "Shoulders",
+        "name":  "Dumbbell Lateral Raise",
+        "image":  "images/gym/image23.jpeg"
+    },
+    {
+        "section":  "Shoulders",
+        "name":  "Dumbbell Front Raise",
+        "image":  "images/gym/image24.jpeg"
+    },
+    {
+        "section":  "Shoulders",
+        "name":  "Bent-Over Dumbbell Rear Delt Raise",
+        "image":  "images/gym/image25.jpeg"
+    },
+    {
+        "section":  "Biceps",
+        "name":  "Biceps Curl Machine",
+        "image":  "images/gym/image26.gif"
+    },
+    {
+        "section":  "Biceps",
+        "name":  "Cable Crossover — Cable Curl",
+        "image":  "images/gym/image27.jpeg"
+    },
+    {
+        "section":  "Biceps",
+        "name":  "Standing Dumbbell Curl",
+        "image":  "images/gym/image28.jpeg"
+    },
+    {
+        "section":  "Biceps",
+        "name":  "Alternating Dumbbell Curl",
+        "image":  "images/gym/image29.gif"
+    },
+    {
+        "section":  "Biceps",
+        "name":  "Hammer Curl",
+        "image":  "images/gym/image30.gif"
+    },
+    {
+        "section":  "Biceps",
+        "name":  "Incline Dumbbell Curl",
+        "image":  "images/gym/image31.gif"
+    },
+    {
+        "section":  "Biceps",
+        "name":  "Concentration Curl",
+        "image":  "images/gym/image32.gif"
+    },
+    {
+        "section":  "Triceps",
+        "name":  "Cable Crossover — Triceps Pushdown",
+        "image":  "images/gym/image33.jpeg"
+    },
+    {
+        "section":  "Triceps",
+        "name":  "Cable Crossover — Overhead Triceps Extension",
+        "image":  "images/gym/image34.jpeg"
+    },
+    {
+        "section":  "Triceps",
+        "name":  "Dumbbell Overhead Extension",
+        "image":  "images/gym/image35.gif"
+    },
+    {
+        "section":  "Triceps",
+        "name":  "Lying Dumbbell Triceps Extension",
+        "image":  "images/gym/image36.jpeg"
+    },
+    {
+        "section":  "Triceps",
+        "name":  "Dumbbell Kickback",
+        "image":  "images/gym/image37.gif"
+    },
+    {
+        "section":  "Triceps",
+        "name":  "Close-Grip Dumbbell Press",
+        "image":  "images/gym/image38.gif"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Hack Squat Machine",
+        "image":  "images/gym/image39.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Leg Extension",
+        "image":  "images/gym/image40.gif"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Seated Leg Press",
+        "image":  "images/gym/image41.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Incline Leg Press",
+        "image":  "images/gym/image42.gif"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Smith Machine Squat",
+        "image":  "images/gym/image43.gif"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Squat Rack — Barbell Squat",
+        "image":  "images/gym/image44.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Dumbbell Squat",
+        "image":  "images/gym/image45.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Dumbbell Lunges",
+        "image":  "images/gym/image46.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Bulgarian Split Squat",
+        "image":  "images/gym/image47.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Leg Curl",
+        "image":  "images/gym/image48.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Dumbbell Romanian Deadlift",
+        "image":  "images/gym/image49.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Hack Squat Machine",
+        "image":  "images/gym/image39.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Seated Leg Press",
+        "image":  "images/gym/image41.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Hip Thrust",
+        "image":  "images/gym/image50.jpeg"
+    },
+    {
+        "section":  "Legs",
+        "name":  "Calf Raise",
+        "image":  "images/gym/image51.jpeg"
+    },
+    {
+        "section":  "Abs \u0026 Core",
+        "name":  "Abdominal Crunch Machine",
+        "image":  "images/gym/image52.gif"
+    },
+    {
+        "section":  "Abs \u0026 Core",
+        "name":  "Captain’s Chair — Leg Raise",
+        "image":  "images/gym/image53.jpeg"
+    },
+    {
+        "section":  "Abs \u0026 Core",
+        "name":  "Cable Crossover — Cable Crunch",
+        "image":  "images/gym/image54.jpeg"
+    },
+    {
+        "section":  "Abs \u0026 Core",
+        "name":  "Rotary Torso Machine",
+        "image":  "images/gym/image55.gif"
+    },
+    {
+        "section":  "Abs \u0026 Core",
+        "name":  "Dumbbell Crunch",
+        "image":  "images/gym/image56.jpeg"
+    },
+    {
+        "section":  "Abs \u0026 Core",
+        "name":  "Dumbbell Russian Twist",
+        "image":  "images/gym/image57.jpeg"
+    },
+    {
+        "section":  "Forearms \u0026 Grip",
+        "name":  "Dumbbell Wrist Curl",
+        "image":  "images/gym/image58.gif"
+    },
+    {
+        "section":  "Forearms \u0026 Grip",
+        "name":  "Reverse Wrist Curl",
+        "image":  "images/gym/image58.gif"
+    },
+    {
+        "section":  "Traps / Upper Back",
+        "name":  "Cable Crossover — Face Pull",
+        "image":  "images/gym/image59.jpeg"
+    }
+]

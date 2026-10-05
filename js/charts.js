@@ -48,32 +48,3 @@ export function barChart(points, { color = 'var(--accent)', height = 140, labels
   return out + '</svg>';
 }
 
-// ----- glanceable widgets -----
-export function ring(pct, { color = 'var(--accent)', text = '' } = {}) {
-  const r = 34; const c = 2 * Math.PI * r; const p = Math.max(0, Math.min(1, pct));
-  return `<svg viewBox="0 0 84 84" class="ring"><circle cx="42" cy="42" r="${r}" fill="none" stroke="var(--line)" stroke-width="9"/>`
-    + `<circle cx="42" cy="42" r="${r}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 42 42)"/>`
-    + `<text x="42" y="49" text-anchor="middle" class="ring-t">${text}</text></svg>`;
-}
-
-export function sparkline(points, { color = 'var(--accent)', height = 46 } = {}) {
-  if (points.length < 2) return `<div class="spark-empty" style="height:${height}px">—</div>`;
-  const w = 120; const pad = 5;
-  const ts = points.map((p) => p.t); const vs = points.map((p) => p.v);
-  const t0 = Math.min(...ts); const t1 = Math.max(...ts); let v0 = Math.min(...vs); let v1 = Math.max(...vs);
-  if (v0 === v1) { v0 -= 1; v1 += 1; }
-  const x = (t) => pad + ((t - t0) / (t1 - t0 || 1)) * (w - 2 * pad);
-  const y = (v) => pad + (1 - (v - v0) / (v1 - v0)) * (height - 2 * pad);
-  const d = points.map((p, i) => (i ? 'L' : 'M') + x(p.t).toFixed(1) + ' ' + y(p.v).toFixed(1)).join(' ');
-  const last = points[points.length - 1];
-  return `<svg viewBox="0 0 ${w} ${height}" class="spark"><path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${x(last.t)}" cy="${y(last.v)}" r="4" fill="${color}"/></svg>`;
-}
-
-export function miniBars(points, { color = 'var(--accent)', height = 64 } = {}) {
-  const max = Math.max(...points.map((p) => p.v), 1); const w = 160; const bw = w / points.length;
-  return `<svg viewBox="0 0 ${w} ${height}" class="spark">${points.map((p, i) => {
-    const h = Math.max(p.v > 0 ? 3 : 1.5, (p.v / max) * (height - 4));
-    const last = i === points.length - 1;
-    return `<rect x="${i * bw + bw * 0.14}" y="${height - h}" width="${bw * 0.72}" height="${h}" rx="3" fill="${p.v > 0 ? color : 'var(--line)'}" opacity="${last ? 1 : 0.55}"/>`;
-  }).join('')}</svg>`;
-}

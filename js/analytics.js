@@ -240,30 +240,3 @@ export function makeAnalytics(d, now = Date.now()) {
 
   return A;
 }
-
-// ----- CSV -----
-const esc = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-const n2 = (v) => String(Math.round(v * 100) / 100);
-const hms = (ms) => { const d = new Date(ms); return [d.getHours(), d.getMinutes(), d.getSeconds()].map((x) => String(x).padStart(2, '0')).join(':'); };
-const title = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-
-export function setsCSV(d) {
-  const lines = ['Date,Time,Workout,Exercise,Muscle,Equipment,Set,Machine Setting,Weight (kg),Reps,Duration (sec),Volume (kg)'];
-  const perDay = {};
-  for (const w of [...d.workouts].sort((a, b) => a.startedAt - b.startedAt)) {
-    const day = ymd(w.startedAt); perDay[day] = (perDay[day] || 0) + 1;
-    const label = day + ' #' + perDay[day];
-    for (const s of d.sets.filter((x) => x.workoutId === w.id).sort((a, b) => a.workoutOrder - b.workoutOrder)) {
-      lines.push([day, hms(s.timestamp), label, s.exerciseName, title(s.muscleCategory), title(s.equipment), s.setOrder,
-        s.machineSetting ?? '', n2(s.weight), s.reps ?? '', s.durationSeconds ?? '', n2(setVolume(s))].map(esc).join(','));
-    }
-  }
-  return lines.join('\n') + '\n';
-}
-export const bodyWeightCSV = (d) => 'Date,Body Weight (kg)\n' + [...d.bodyWeights].sort((a, b) => a.date.localeCompare(b.date)).map((b) => b.date + ',' + n2(b.kg)).join('\n') + '\n';
-export function measurementsCSV(d) {
-  const names = Object.fromEntries(d.fields.map((f) => [f.id, f.name]));
-  return 'Date,Measurement,Value (cm)\n' + [...d.measurements].sort((a, b) => a.date.localeCompare(b.date))
-    .map((m) => [m.date, names[m.fieldId] || m.fieldId, n2(m.cm)].map(esc).join(',')).join('\n') + '\n';
-}
-export const stepsCSV = (d) => 'Date,Steps\n' + [...d.steps].sort((a, b) => a.date.localeCompare(b.date)).map((s) => s.date + ',' + s.steps).join('\n') + '\n';
